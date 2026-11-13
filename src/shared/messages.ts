@@ -23,6 +23,18 @@ If you get a similar message, do not click its links and never share OTP codes, 
 ${TRUSTED}`,
     maxLengths: [30, 40, 20],
   },
+  // Helping Hands (PLAN §7.3): sent only by /api/help, with a server-made code; never by /api/alert.
+  help_request: {
+    header: 'Help request',
+    body: `This is a help request from {{1}}. They would like you to check a message before they reply to it.
+
+Open Scam Shield on your phone, tap Helper and enter this code: {{2}}
+
+The code works for 30 minutes. Never share it with anyone else, and never click links in the message you are checking.
+
+${TRUSTED}`,
+    maxLengths: [30, 6],
+  },
 } as const;
 
 export type TemplateName = keyof typeof TEMPLATES;

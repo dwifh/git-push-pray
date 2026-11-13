@@ -102,6 +102,25 @@ export type AlertTemplate = (typeof ALERT_TEMPLATES)[number];
 export type AlertRequest = { template: AlertTemplate; to: string; vars: string[] }; // to: E.164 digits; vars fill {{1}}, {{2}}, …
 export type AlertResponse = { sent: true } | { sent: false; fallback: 'wa.me' };
 
+// ---- /api/help (Helping Hands, PLAN §7.3) ----
+// Elder: POST → WhatsApp code to the helper, keep `token`; poll GET ?token= every 3 s until `reply` is set.
+// Helper: GET ?code= → the redacted message and the verdict; PUT { code, reply } once. Codes expire after 30 min.
+
+export const HELP_REPLIES = ['CALL_YOU', 'DELETE_IT', 'GENUINE'] as const;
+export type HelpReply = (typeof HELP_REPLIES)[number];
+// The elder's screen shows "<helper> says: <label>". GENUINE is refused on HIGH_RISK (400).
+export const HELP_REPLY_LABEL: Record<HelpReply, string> = {
+  CALL_YOU: "Don't reply. I'll call you.",
+  DELETE_IT: 'Block it and delete it.',
+  GENUINE: "It's genuine. Go ahead.",
+};
+
+export type HelpRequest = { elderName: string; to: string; text: string; sender?: string; verdict: Verdict }; // verdict: what the elder saw
+export type HelpCreated = { code: string; token: string; sent: boolean };
+export type HelpView = { elderName: string; text: string; verdict: Verdict; flags: string[]; advice: string; reply: HelpReply | null }; // text is redacted
+export type HelpPoll = { reply: HelpReply | null };
+export type HelpAnswer = { code: string; reply: HelpReply };
+
 // ---- Every route ----
 
 export type ApiError = { error: string }; // status 400 bad input, 429 rate limit, 502 upstream down
