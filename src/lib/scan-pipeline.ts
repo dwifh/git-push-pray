@@ -1,9 +1,10 @@
 // Server-only. PLAN §3 / CLAUDE.md pipeline, shared by /api/scan and /api/email:
 // redact → extract + rules → evidence (parallel, 3 s, `unknown` on failure) → Jev → Claude → max(floor, Jev, Claude).
 // Every step after redaction sees only redacted text. Deps are injectable so tests and the eval run offline or capture raw outputs.
-import { VERDICTS, type DomainIntel, type ScanRequest, type ScanResult, type Verdict } from '../shared/types.ts';
+import { IMPORTANCES, LIMITS, VERDICTS, isOneOf, type DomainIntel, type Importance, type ScanRequest, type ScanResult, type Verdict } from '../shared/types.ts';
 import calibrationJson from './calibration.json' with { type: 'json' };
 import { CLAUDE_MODEL, callClaude, type ClaudeResult } from './claude.ts';
+import { parseHeaders, type EmailFacts } from './email.ts';
 import { extractDomains, registrableDomain } from './extract.ts';
 import { JEV_MODEL, callJevDecision, type JevQuestion } from './jev.ts';
 import { checkDomain } from './threat-intel.ts';
@@ -24,9 +25,9 @@ const ADVICE: Record<Verdict, string> = {
   HIGH_RISK: 'Do not click any link, reply, pay or share any code. If it claims to be your bank, call the number on the back of your card.',
 };
 
-export type JevResult = { signals: Partial<Record<SignalName, number>>; isFragment: number; missingField: string };
+export type JevResult = { signals: Partial<Record<SignalName, number>>; isFragment: number; missingField: string; importance?: string };
 export type Deps = {
-  jev: (text: string) => Promise<JevResult | null>;
+  jev: (text: string, email?: boolean) => Promise<JevResult | null>; // email: also ask `importance`
   claude: (text: string, evidence: string) => Promise<ClaudeResult | null>;
   intel: (hosts: string[]) => Promise<DomainIntel[]>;
   reports: (domains: string[]) => Promise<{ domain: string; reporters: number }[]>; // registrable domains
@@ -44,13 +45,26 @@ const JEV_QUESTIONS: Record<string, JevQuestion> = {
   },
 };
 
-async function liveJev(text: string): Promise<JevResult | null> {
-  const a = await callJevDecision({ message: text }, JEV_QUESTIONS);
+// Email path only: /api/scan still sends JEV_QUESTIONS unchanged, so its calibration (record + calibrate) still holds.
+const EMAIL_JEV_QUESTIONS: Record<string, JevQuestion> = {
+  ...JEV_QUESTIONS,
+  importance: {
+    type: 'choice',
+    instructions: "If this email is genuine, how much does it need the reader's attention?",
+    criteria: { URGENT: 'Needs action soon (a bill, a deadline, an account problem)', ROUTINE: 'Normal personal or service mail', PROMOTIONAL: 'Newsletter, advert or marketing' },
+  },
+};
+// Jev down or off-list answer → ROUTINE: URGENT would rush the reader (what scams want), PROMOTIONAL could bury real mail.
+const DEFAULT_IMPORTANCE: Importance = 'ROUTINE';
+
+async function liveJev(text: string, email = false): Promise<JevResult | null> {
+  const a = await callJevDecision({ message: text }, email ? EMAIL_JEV_QUESTIONS : JEV_QUESTIONS);
   if (!SIGNAL_NAMES.some((n) => a?.[n]?.noul != null)) return null; // a reply with no signals is a failed call, not "no risk"
   return {
     signals: Object.fromEntries(SIGNAL_NAMES.map((n) => [n, a[n]?.noul])),
     isFragment: a.isFragment?.noul ?? 0,
     missingField: a.missingField?.choice ?? 'none',
+    ...(email && { importance: a.importance?.choice }),
   };
 }
 
@@ -76,7 +90,11 @@ async function withTimeout<T>(run: () => Promise<T>, fallback: T) {
   }
 }
 
-export async function runScanPipeline(input: ScanRequest, deps: Deps = LIVE_DEPS): Promise<ScanResult> {
+export async function runScanPipeline(
+  input: ScanRequest & { emailFacts?: EmailFacts },
+  deps: Deps = LIVE_DEPS,
+): Promise<ScanResult & { importance?: Importance }> {
+  const email = input.emailFacts;
   const started = Date.now();
   const text = redact(input.text);
   // The sender reaches the models only: a sender number must not count as "a number to call back" in the rules.
@@ -85,13 +103,13 @@ export async function runScanPipeline(input: ScanRequest, deps: Deps = LIVE_DEPS
   const registrable = [...new Set(domains.map(registrableDomain))];
   const unknownIntel = domains.map((domain): DomainIntel => ({ domain, vt: 'unknown', urlhaus: 'unknown' }));
 
-  const jevCall = Promise.resolve().then(() => deps.jev(modelText)).catch(() => null);
+  const jevCall = Promise.resolve().then(() => deps.jev(modelText, !!email)).catch(() => null);
   const [intel, communityReports, ragMatches] = await Promise.all([
     domains.length ? withTimeout(() => deps.intel(domains), unknownIntel) : [],
     registrable.length ? withTimeout(() => deps.reports(registrable), []) : [],
     withTimeout(() => deps.rag(modelText), []),
   ]);
-  const floor = ruleFloor({ text, domains, intel, communityReports, ragMatches });
+  const floor = ruleFloor({ text, domains, intel, communityReports, ragMatches, email });
 
   const jev = await jevCall;
   const jevScore = jev ? scamScore(jev.signals, CAL.jev.weights) : null;
@@ -108,6 +126,9 @@ export async function runScanPipeline(input: ScanRequest, deps: Deps = LIVE_DEPS
     ...communityReports.map((r) => `Community reports for ${r.domain}: ${r.reporters} distinct reporters`),
     // Strong matches only: weak ones (0.2–0.4) read as "similar known scam" and pushed genuine messages up (eval 2026-11-13).
     ...ragMatches.filter((m) => m.score >= RAG_MATCH_THRESHOLD).map((m) => `Similar known scam pattern: ${m.title} (similarity ${m.score})`),
+    ...(email
+      ? [`Email checks by the receiving server: SPF ${email.spf}, DKIM ${email.dkim}, DMARC ${email.dmarc}; From domain ${email.fromDomain ?? 'unknown'}, Reply-To domain ${email.replyToDomain ?? 'none'}`]
+      : []),
     `Scam-signal score from a first model: ${jevScore ?? 'unavailable'} (0 = no signs, 1 = clear scam)`,
   ].join('\n');
   const claude = clarify ? null : await Promise.resolve().then(() => deps.claude(modelText, evidence)).catch(() => null);
@@ -125,7 +146,17 @@ export async function runScanPipeline(input: ScanRequest, deps: Deps = LIVE_DEPS
     advice: useClaudeText && verdict !== 'SAFE' ? claude.advice : ADVICE[verdict],
     scamType: useClaudeText ? claude.scamType : '',
     ...(clarify && { clarify }),
+    ...(email && { importance: isOneOf(IMPORTANCES, jev?.importance) ? jev.importance : DEFAULT_IMPORTANCE }),
     evidence: { domains, intel, communityReports, ragMatches },
     metadata: { modelsUsed: [...(jev ? [JEV_MODEL] : []), ...(claude ? [CLAUDE_MODEL] : [])], latencyMs: Date.now() - started },
   };
+}
+
+// PLAN §6: subject + body are scanned; display name + From domain go in as the sender (models only, redacted).
+// shortcut: text capped at LIMITS.text like /api/scan (model cost, Jev 5 s timeout), so a link past it is missed; raise if real mail needs it.
+export function scanEmail(raw: string, deps: Deps = LIVE_DEPS) {
+  const e = parseHeaders(raw);
+  const text = [e.subject, e.body].filter(Boolean).join('\n').slice(0, LIMITS.text);
+  const sender = [e.displayName, e.fromDomain && `(${e.fromDomain})`].filter(Boolean).join(' ');
+  return runScanPipeline({ text, sender: sender || undefined, emailFacts: e }, deps);
 }

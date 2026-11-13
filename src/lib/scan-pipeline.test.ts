@@ -2,7 +2,7 @@
 // Fakes stand in for Jev, Claude and the evidence lookups, so this runs offline with no keys.
 import assert from 'node:assert/strict';
 import type { ClaudeResult } from './claude.ts';
-import { runScanPipeline, type Deps, type JevResult } from './scan-pipeline.ts';
+import { runScanPipeline, scanEmail, type Deps, type JevResult } from './scan-pipeline.ts';
 
 const DEMO_1 = 'MCB: your account is blocked. Confirm your OTP 482913 at https://mcb-secure-login.com/verify within 24 hours.';
 const DEMO_3 = 'CEB: scheduled maintenance. Power supply will be interrupted in Moka on Sunday from 08:00 to 12:00.';
@@ -121,6 +121,52 @@ const down = async () => {
   assert.ok(Date.now() - t0 < 3500);
   assert.deepEqual(r.evidence.intel, [{ domain: 'example.org', vt: 'unknown', urlhaus: 'unknown' }]);
   assert.deepEqual(r.evidence.communityReports, []);
+}
+
+// Email Guard (PLAN §6). Hand-written fixtures, fictitious domains; the scam domain is defanged in git and refanged here.
+const refang = (s: string) => s.replace(/\[\.\]/g, '.');
+const SPOOFED_MRA = refang(
+  [
+    'Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=refund-portal[.]top; dkim=none; dmarc=fail header.from=refund-portal[.]top',
+    'From: "MRA Tax Refunds" <noreply@refund-portal[.]top>',
+    'Subject: Your tax refund is ready',
+    '',
+    'Dear taxpayer, you are owed Rs 4,500. Claim it at https://refund-portal[.]top/claim',
+  ].join('\r\n'),
+);
+const NEWSLETTER = [
+  'Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=lagoonbooks.example; dkim=pass header.d=lagoonbooks.example; dmarc=pass header.from=lagoonbooks.example',
+  'From: "Lagoon Books" <news@lagoonbooks.example>',
+  'Subject: New arrivals this week',
+  'List-Unsubscribe: <https://lagoonbooks.example/unsubscribe>',
+  '',
+  'Hello reader, here are this week\'s new novels and a short interview with a local author. See them at https://lagoonbooks.example/new',
+].join('\r\n');
+const jevImportance = (importance: string) => async (_t: string, email?: boolean): Promise<JevResult> => ({ ...quietJev, ...(email && { importance }) });
+
+{
+  let seen = '';
+  const r = await scanEmail(SPOOFED_MRA, fakes({ jev: async (t, email) => ((seen = t), { ...quietJev, importance: email ? 'URGENT' : 'x' }) }));
+  assert.equal(r.verdict, 'HIGH_RISK');
+  assert.ok(r.flags.includes("The sender's name says MRA but the email failed its authenticity check."));
+  assert.equal(r.importance, 'URGENT', 'importance comes from Jev, and Jev was asked on the email path');
+  assert.match(seen, /^From: MRA Tax Refunds \(refund-portal\.top\)\nYour tax refund is ready\n/, 'sender, then subject + body');
+}
+{
+  const r = await scanEmail(NEWSLETTER, fakes({ jev: jevImportance('PROMOTIONAL') }));
+  assert.equal(r.verdict, 'SAFE');
+  assert.equal(r.importance, 'PROMOTIONAL');
+}
+// Jev down, or an answer off the list → ROUTINE; the rule verdict still stands.
+assert.equal((await scanEmail(NEWSLETTER, fakes({ jev: down }))).importance, 'ROUTINE');
+assert.equal((await scanEmail(NEWSLETTER, fakes({ jev: jevImportance('VERY_URGENT') }))).importance, 'ROUTINE');
+assert.equal((await scanEmail(SPOOFED_MRA, fakes({ jev: down, claude: async () => null }))).verdict, 'HIGH_RISK');
+// /api/scan never asks Jev for importance and returns none (its Jev questions stay calibrated).
+{
+  let asked: boolean | undefined;
+  const r = await runScanPipeline({ text: DEMO_3 }, fakes({ jev: async (_t, email) => ((asked = email), quietJev) }));
+  assert.equal(asked, false);
+  assert.equal('importance' in r, false);
 }
 
 console.log('scan-pipeline ok');
