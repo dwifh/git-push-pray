@@ -90,7 +90,7 @@ Screens (`src/app/`, tabs): `index.tsx` Scan, `coach.tsx`, `feed.tsx`, `email.ts
 
 `SUSPICIOUS` if any:
 - URL shortener (`bit.ly`, `tinyurl.com`, `t.ly`, `cutt.ly`, `rb.gy`, `is.gd`, `shorturl.at`) — "shortened link hides where it goes".
-- VirusTotal `malicious == 1` or `suspicious >= 1`.
+- VirusTotal `malicious + suspicious >= 2` (a lone engine is noise: VT had `google.com` at `malicious 1` on 2026-11-13).
 - Credential request, payment / fee request, or urgency / threat wording ("within 24 hours", "account blocked", "disconnected", "arrest").
 - RAG top match score ≥ `RAG_MATCH_THRESHOLD` (start at 0.55; calibrate on the demo messages).
 - 1–2 community reporters on the domain (allowlisted domains and URL shorteners excluded).
