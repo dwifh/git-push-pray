@@ -1,29 +1,29 @@
 // Calibrates model routing on data/eval/messages.jsonl.
-//   npm run eval -- record [limit]   calls Jev + Claude on every message (redacted first), appends to data/eval/runs/latest.jsonl;
-//                                    re-running skips ids already recorded, so an interrupted run resumes.
-//   npm run eval -- calibrate        offline: fits src/lib/calibration.json on the dev split, reports on the test split.
+//   npm run eval -- record [limit]   runs every message through runScanPipeline (live Jev + Claude, real rule evidence in the
+//                                    Claude prompt) and appends the raw model outputs to data/eval/runs/latest.jsonl;
+//                                    re-running skips ids already recorded, so an interrupted run resumes. Delete it for a fresh run.
+//   npm run eval -- calibrate        offline: fits src/lib/calibration.json on the dev split, reports verdicts
+//                                    (rule floor + models) on the test split against the TEAM-PLAN §5 pass bar.
 //   npm run eval -- rules            offline, no keys (CI): rule floor per message, and lookalike false positives on
 //                                    data/eval/domains.jsonl (must be 0; exit code 1 otherwise).
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { calibrate, DEFAULT_CALIBRATION, rocAuc, type Calibration, type EvalRow } from '../src/lib/calibration.ts';
-import { callClaude } from '../src/lib/claude.ts';
+import type { ClaudeResult } from '../src/lib/claude.ts';
 import { extractDomains, lookalikeOf } from '../src/lib/extract.ts';
-import { callJevDecision, type JevQuestion } from '../src/lib/jev.ts';
 import { redact } from '../src/lib/redact.ts';
 import { ruleFloor } from '../src/lib/rules.ts';
-import { SIGNAL_NAMES, SIGNALS, scamScore, type SignalName } from '../src/lib/scam-signals.ts';
+import { LIVE_DEPS, runScanPipeline, type JevResult } from '../src/lib/scan-pipeline.ts';
+import { SIGNAL_NAMES, scamScore, type SignalName } from '../src/lib/scam-signals.ts';
 import { LEVEL_NAME, Level, claudeLevel, jevLevel, maxLevel } from '../src/lib/verdict.ts';
 import { VERDICTS, type Verdict } from '../src/shared/types.ts';
 
-type Message = { id: string; text: string; label: 'scam' | 'genuine'; split: 'dev' | 'test'; channel: string; expected?: Verdict };
-type RunRow = EvalRow & { id: string; split: 'dev' | 'test'; channel: string };
+type Message = { id: string; text: string; sender?: string; label: 'scam' | 'genuine'; split: 'dev' | 'test'; channel: string; expected?: Verdict };
+type RunRow = EvalRow & { id: string; split: 'dev' | 'test'; channel: string; clarify?: true }; // clarify: Claude skipped on purpose
 
 const MESSAGES = 'data/eval/messages.jsonl';
 const RUN = 'data/eval/runs/latest.jsonl';
 const OUT = 'src/lib/calibration.json';
 const DOMAINS = 'data/eval/domains.jsonl';
-// Same evidence line for every message: the pipeline that gathers rules + intel evidence lands in step 3; re-record then.
-const EVIDENCE = 'None available for this message.';
 // Messages only. DIFrauD job ads (WEB) are long postings whose labels hinge on metadata, not message red flags:
 // Jev AUC 0.30 there on 2026-11-13. Fitting on them dragged the cutoffs down; they stay in the report as out-of-domain.
 const IN_DOMAIN = new Set(['SMS', 'EMAIL']);
@@ -31,20 +31,9 @@ const IN_DOMAIN = new Set(['SMS', 'EMAIL']);
 const readJsonl = <T>(file: string): T[] =>
   existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l: string) => JSON.parse(l)) : [];
 
-const QUESTIONS = Object.fromEntries(
-  SIGNAL_NAMES.map((n) => [n, { type: 'noul', instructions: SIGNALS[n].question } satisfies JevQuestion]),
-);
-
-async function jevSignals(text: string) {
-  try {
-    const answers = await callJevDecision({ message: text }, QUESTIONS);
-    // A malformed reply counts as a failed call (skipped), never as "no risk": JSON would turn NaN into null → 0.
-    if (!SIGNAL_NAMES.every((n) => Number.isFinite(answers?.[n]?.noul))) return null;
-    return Object.fromEntries(SIGNAL_NAMES.map((n) => [n, answers[n].noul!])) as Record<SignalName, number>;
-  } catch {
-    return null;
-  }
-}
+// A malformed Jev reply counts as a failed call (skipped), never as "no risk": JSON would turn NaN into null → 0.
+const completeSignals = (s?: JevResult['signals']) =>
+  s && SIGNAL_NAMES.every((n) => Number.isFinite(s[n])) ? (s as Record<SignalName, number>) : null;
 
 async function record(limit: number) {
   mkdirSync('data/eval/runs', { recursive: true });
@@ -54,21 +43,37 @@ async function record(limit: number) {
   let i = 0;
   const worker = async () => {
     for (let m = todo[i++]; m; m = todo[i++]) {
-      const text = redact(m.text);
-      const [signals, claude] = await Promise.all([jevSignals(text), callClaude(text, EVIDENCE)]);
-      const row: RunRow = { id: m.id, split: m.split, channel: m.channel, label: m.label, signals, claude: claude?.verdict ?? null };
+      // The live deps, wrapped to keep their raw outputs: the eval records exactly what the pipeline sends and gets back.
+      const raw: { jev?: JevResult | null; claude?: ClaudeResult | null } = {};
+      const r = await runScanPipeline(
+        { text: m.text, sender: m.sender },
+        { ...LIVE_DEPS, jev: async (t) => (raw.jev = await LIVE_DEPS.jev(t)), claude: async (t, e) => (raw.claude = await LIVE_DEPS.claude(t, e)) },
+      );
+      const signals = completeSignals(raw.jev?.signals);
+      const claude = raw.claude?.verdict ?? null;
+      const row: RunRow = { id: m.id, split: m.split, channel: m.channel, label: m.label, signals, claude, ...(r.clarify && { clarify: true as const }) };
       appendFileSync(RUN, JSON.stringify(row) + '\n');
-      process.stdout.write(signals ? (claude ? '.' : 'c') : claude ? 'j' : 'x'); // c/j = that call failed, x = both
+      process.stdout.write(r.clarify ? '?' : signals ? (claude ? '.' : 'c') : claude ? 'j' : 'x'); // ? = clarified, c/j = that call failed, x = both
     }
   };
   await Promise.all(Array.from({ length: 4 }, worker));
   console.log('\ndone');
 }
 
-function report(name: string, rows: RunRow[], cal: Calibration) {
+// The rule floor per message id, as the pipeline computes it. shortcut: no intel, reports or RAG (empty deps until step 2);
+// once they land, record the pipeline's floor in the run row instead.
+const ruleFloors = () =>
+  new Map(
+    readJsonl<Message>(MESSAGES).map((m) => {
+      const text = redact(m.text);
+      return [m.id, ruleFloor({ text, domains: extractDomains(text) }).level];
+    }),
+  );
+
+function report(name: string, rows: RunRow[], cal: Calibration, floors: Map<string, Level>) {
   const levels = rows.map((r) => {
     const jev = r.signals ? jevLevel(scamScore(r.signals, cal.jev.weights), cal.jev) : Level.SAFE;
-    return maxLevel(jev, claudeLevel(r.claude ?? null, cal.claude));
+    return maxLevel(floors.get(r.id) ?? Level.SAFE, jev, claudeLevel(r.claude ?? null, cal.claude));
   });
   const scams = rows.filter((r) => r.label === 'scam');
   const missed = rows.filter((r, i) => r.label === 'scam' && levels[i] === Level.SAFE);
@@ -93,12 +98,18 @@ function calibrateRun() {
   console.log(JSON.stringify({ jev: { ...cal.jev, reliability: undefined }, claude: cal.claude }, null, 2));
   console.log('Jev score reliability (dev): score bin → share that were scams');
   for (const b of cal.jev.reliability) console.log(`  ${b.from.toFixed(1)}–${b.to.toFixed(1)}  n=${String(b.n).padStart(3)}  scam rate ${b.scamRate}`);
-  console.log(`\nHeld-out test split (${test.length} rows), models only (no rules yet):`);
-  report('PLAN cutoffs', test, DEFAULT_CALIBRATION);
-  const { missed } = report('calibrated', test, cal);
-  for (const ch of IN_DOMAIN) report(`  ${ch}`, test.filter((r) => r.channel === ch), cal);
-  report('  WEB (out)', rows.filter((r) => r.split === 'test' && !IN_DOMAIN.has(r.channel)), cal);
+  const floors = ruleFloors();
+  console.log(`\nHeld-out test split (${test.length} rows), verdict = max(rule floor, Jev, Claude):`);
+  report('PLAN cutoffs', test, DEFAULT_CALIBRATION, floors);
+  const { missed, alarms } = report('calibrated', test, cal, floors);
+  for (const ch of IN_DOMAIN) report(`  ${ch}`, test.filter((r) => r.channel === ch), cal, floors);
+  report('  WEB (out)', rows.filter((r) => r.split === 'test' && !IN_DOMAIN.has(r.channel)), cal, floors);
+  report('models only', test, cal, new Map());
+  console.log(`clarified (Claude skipped on purpose): ${test.filter((r) => r.clarify).length}/${test.length}`);
   if (missed.length) console.log(`missed scams: ${missed.map((r) => r.id).join(', ')}`);
+  if (alarms.length) console.log(`genuine above SAFE: ${alarms.map((r) => `${r.id} (Claude ${r.claude ?? '-'})`).join(', ')}`);
+  const pass = !missed.length && alarms.length < 0.1 * test.filter((r) => r.label === 'genuine').length;
+  console.log(`TEAM-PLAN §5 pass bar (no scam SAFE, under 10% genuine above SAFE): ${pass ? 'PASS' : 'FAIL'}`);
 }
 
 // Rules only: no intel, community reports or RAG (they need keys), so this is the text + lookalike floor.

@@ -6,11 +6,13 @@ export type JevQuestion =
 
 export type JevAnswers = Record<string, { type: string; choice?: string; noul?: number; confidence?: number }>;
 
+export const JEV_MODEL = 'typesafe/jev-1.13';
+
 export async function callJevDecision(state: unknown, questions: Record<string, JevQuestion>): Promise<JevAnswers> {
   const res = await fetch('https://openrouter.ai/api/alpha/decisions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'typesafe/jev-1.13', state, questions }),
+    body: JSON.stringify({ model: JEV_MODEL, state, questions }),
     signal: AbortSignal.timeout(5000),
   });
   const data = await res.json().catch(() => null);
