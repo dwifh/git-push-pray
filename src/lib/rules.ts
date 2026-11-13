@@ -14,7 +14,7 @@ export type RuleFacts = {
   email?: EmailFacts; // Email Guard only (PLAN §6)
 };
 
-const RAG_MATCH_THRESHOLD = 0.55; // shortcut: PLAN start value; calibrate on the demo messages (TEAM-PLAN §5)
+export const RAG_MATCH_THRESHOLD = 0.55; // shortcut: PLAN start value; calibrate on the demo messages (TEAM-PLAN §5)
 
 // Rules read redacted text: an OTP is "[CODE]", a number is "[PHONE …]". Wording within one sentence (no . ! ? or newline).
 const CREDENTIAL = String.raw`(?:otp|one[- ]time (?:password|pin|code)|pin|password|passcode|cvv|cvc|card (?:number|details)|security code|verification code|(?:login|bank|banking) details)`;

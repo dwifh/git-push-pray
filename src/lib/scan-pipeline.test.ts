@@ -70,6 +70,19 @@ const down = async () => {
   assert.ok(seen[0].includes('[PHONE +230]'), 'the sender reaches the models, redacted');
 }
 
+// Claude sees only strong RAG matches: a weak one is not evidence of a scam.
+{
+  let evidence = '';
+  await runScanPipeline(
+    { text: 'Hello there' },
+    fakes({
+      rag: async () => [{ title: 'Strong pattern', score: 0.6 }, { title: 'Weak pattern', score: 0.3 }],
+      claude: async (_t, e) => ((evidence = e), claudeSays('SAFE')),
+    }),
+  );
+  assert.ok(evidence.includes('Strong pattern') && !evidence.includes('Weak pattern'));
+}
+
 // Clarify: a fragment with a missing field asks a question and skips Claude, but never stalls a clear scam.
 {
   let claudeCalls = 0;

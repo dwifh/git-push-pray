@@ -10,7 +10,7 @@ import { checkDomain } from './threat-intel.ts';
 import { searchKnowledgeBase } from './rag.ts';
 import { redact } from './redact.ts';
 import { communityReports } from './reports.ts';
-import { ruleFloor } from './rules.ts';
+import { RAG_MATCH_THRESHOLD, ruleFloor } from './rules.ts';
 import { SIGNAL_NAMES, SIGNALS, clarifyFor, scamScore, signalFlags, type SignalName } from './scam-signals.ts';
 import { LEVEL_NAME, Level, claudeLevel, jevLevel, loadCalibration, maxLevel } from './verdict.ts';
 
@@ -106,7 +106,8 @@ export async function runScanPipeline(input: ScanRequest, deps: Deps = LIVE_DEPS
     `Links: ${domains.join(', ') || 'none'}`,
     ...intel.map((i) => `Threat intel for ${i.domain}: VirusTotal ${i.vt === 'unknown' ? 'unknown' : `${i.vt.malicious} malicious, ${i.vt.suspicious} suspicious`}; URLhaus ${i.urlhaus}`),
     ...communityReports.map((r) => `Community reports for ${r.domain}: ${r.reporters} distinct reporters`),
-    ...ragMatches.map((m) => `Similar known scam pattern: ${m.title} (similarity ${m.score})`),
+    // Strong matches only: weak ones (0.2–0.4) read as "similar known scam" and pushed genuine messages up (eval 2026-11-13).
+    ...ragMatches.filter((m) => m.score >= RAG_MATCH_THRESHOLD).map((m) => `Similar known scam pattern: ${m.title} (similarity ${m.score})`),
     `Scam-signal score from a first model: ${jevScore ?? 'unavailable'} (0 = no signs, 1 = clear scam)`,
   ].join('\n');
   const claude = clarify ? null : await Promise.resolve().then(() => deps.claude(modelText, evidence)).catch(() => null);
