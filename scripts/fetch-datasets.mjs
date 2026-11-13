@@ -1,7 +1,7 @@
 // Builds data/eval/messages.jsonl from DIFrauD (MIT; Boumber et al., LREC-COLING 2024; labels Cleanlab-cleaned
 // and hand-curated). Their validation split becomes our `dev` (calibration) and their test split our `test` (report).
 // Run: npm run fetch-data
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const BASE = 'https://huggingface.co/datasets/difraud/difraud/resolve/main';
 const DOMAINS = { sms: 'SMS', phishing: 'EMAIL', job_scams: 'WEB' };
@@ -49,6 +49,9 @@ for (const [domain, channel] of Object.entries(DOMAINS)) {
 }
 
 mkdirSync('data/eval', { recursive: true });
-writeFileSync('data/eval/messages.jsonl', out.map((r) => JSON.stringify(r)).join('\n') + '\n');
+// Keep the hand-built Mauritius rows (mu-*): this script owns only the DIFrauD rows.
+const FILE = 'data/eval/messages.jsonl';
+const handBuilt = existsSync(FILE) ? readFileSync(FILE, 'utf8').split('\n').filter((l) => l.startsWith('{"id":"mu-')) : [];
+writeFileSync(FILE, [...out.map((r) => JSON.stringify(r)), ...handBuilt].join('\n') + '\n');
 const count = (k, v) => out.filter((r) => r[k] === v).length;
 console.log(`wrote ${out.length} messages: dev ${count('split', 'dev')}, test ${count('split', 'test')}, scam ${count('label', 'scam')}`);
