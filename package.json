@@ -50,5 +50,8 @@
     "seed": "node --env-file=.env scripts/seed-knowledge.mjs",
     "check-intel": "node --env-file=.env scripts/check-intel.ts"
   },
+  "engines": {
+    "node": ">=22.15"
+  },
   "private": true
 }
