@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps, ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FONT, css, glow, useTheme } from './theme';
+import { FONT, css, glow, useTheme, useThemeMode } from './theme';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 type Tone = 'teal' | 'orange';
@@ -20,6 +20,22 @@ export function Screen({ children, tone = 'teal' }: { children: ReactNode; tone?
     <ScrollView style={[{ flex: 1, backgroundColor: t.bg }, bg]} contentContainerStyle={[s.screen, { paddingTop: top + 28 }]} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
+  );
+}
+
+// Sun = light mode, moon = dark mode; the button shows the mode a tap switches to (as in the mockups).
+export function ThemeToggle() {
+  const t = useTheme();
+  const [mode, toggle] = useThemeMode();
+  const toLight = mode === 'dark';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={toLight ? 'Switch to light mode' : 'Switch to dark mode'}
+      onPress={toggle}
+      style={({ pressed }) => [s.toggle, { backgroundColor: t.card, borderColor: t.border, opacity: pressed ? 0.8 : 1 }]}>
+      <Ionicons name={toLight ? 'sunny' : 'moon'} size={26} color={toLight ? '#FBBF24' : t.text} />
+    </Pressable>
   );
 }
 
@@ -161,6 +177,7 @@ export function ErrorText({ children }: { children: ReactNode }) {
 
 const s = StyleSheet.create({
   screen: { paddingHorizontal: 16, paddingBottom: 48, gap: 18, width: '100%', maxWidth: 560, alignSelf: 'center', flexGrow: 1 },
+  toggle: { width: 52, height: 52, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   eyebrow: { fontFamily: FONT.body, fontSize: 15, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase' },
   title: { fontFamily: FONT.display, fontSize: 34, lineHeight: 40, fontWeight: '700', letterSpacing: -0.6 },
   body: { fontFamily: FONT.body, fontSize: 19, lineHeight: 27 },

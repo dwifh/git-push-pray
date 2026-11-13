@@ -16,12 +16,41 @@ const light: typeof dark = {
 };
 
 export type Theme = typeof dark;
-const noSubscribe = () => () => {};
-// The server can't see the phone's colour scheme: hydrate with light, then switch, so no stale server styles stay.
-export function useTheme() {
-  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
-  return useColorScheme() === 'dark' && hydrated ? dark : light;
+type Mode = 'light' | 'dark';
+
+// The user's sun/moon choice, kept on this phone. null = follow the phone's own setting.
+const KEY = 'theme';
+let choice: Mode | null | undefined; // undefined = not read from storage yet
+const listeners = new Set<() => void>();
+function readChoice(): Mode | null {
+  if (choice === undefined) {
+    try {
+      const v = globalThis.localStorage?.getItem(KEY);
+      choice = v === 'light' || v === 'dark' ? v : null;
+    } catch {
+      choice = null;
+    }
+  }
+  return choice;
 }
+const subscribe = (fn: () => void) => (listeners.add(fn), () => void listeners.delete(fn));
+
+// The server can't see the phone's scheme or storage: hydrate with light, then switch, so no stale server styles stay.
+export function useThemeMode(): [Mode, () => void] {
+  const system = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const picked = useSyncExternalStore(subscribe, readChoice, () => 'server' as const);
+  const mode: Mode = picked === 'server' ? 'light' : picked ?? system;
+  const toggle = () => {
+    choice = mode === 'dark' ? 'light' : 'dark';
+    try {
+      globalThis.localStorage?.setItem(KEY, choice);
+    } catch {}
+    listeners.forEach((fn) => fn());
+  };
+  return [mode, toggle];
+}
+
+export const useTheme = () => (useThemeMode()[0] === 'dark' ? dark : light);
 
 // Headings and numbers: Space Grotesk; body: Inter (loaded in +html.tsx). System fonts if offline.
 export const FONT = {

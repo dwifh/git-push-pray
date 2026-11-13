@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ContactSettings } from '@/components/ContactSettings';
 import { HangUp } from '@/components/HangUp';
 import { FONT, useTheme } from '@/components/theme';
-import { Avatar, Body, Button, Card, ErrorText, Eyebrow, Field, Orb, Pill, Screen, Title, type IconName } from '@/components/ui';
+import { Avatar, Body, Button, Card, ErrorText, Eyebrow, Field, Orb, Pill, Screen, ThemeToggle, Title, type IconName } from '@/components/ui';
 import { api } from '@/shared/api';
 import { QUESTIONS, coachScore, isHangUp, topFlag, type Answer, type Answers } from '@/shared/coach';
 import { getContact } from '@/shared/contact';
@@ -97,9 +97,12 @@ export default function Coach() {
   const { to, firstName } = getContact();
   return (
     <Screen>
-      <View style={{ gap: 4 }}>
-        <Text style={[s.greeting, { color: t.muted }]}>{firstName ? `${greeting}, ${firstName}` : greeting}</Text>
-        <Title>On a call right now?</Title>
+      <View style={s.head}>
+        <View style={{ gap: 4, flex: 1 }}>
+          <Text style={[s.greeting, { color: t.muted }]}>{firstName ? `${greeting}, ${firstName}` : greeting}</Text>
+          <Title>On a call right now?</Title>
+        </View>
+        <ThemeToggle />
       </View>
       <Orb color={t.teal} chips={['OTP & PIN', 'Money', 'Fake Police', 'Family']}>
         <Ionicons name="shield-checkmark" size={72} color={t.onTeal} />
@@ -149,6 +152,7 @@ const s = StyleSheet.create({
   answer: { minHeight: 76, borderRadius: 22, borderWidth: 2.5, flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 22 },
   answerText: { fontFamily: FONT.display, fontSize: 26, fontWeight: '700', letterSpacing: 1 },
   greeting: { fontFamily: FONT.body, fontSize: 18 },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   contact: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderRadius: 22, padding: 14, minHeight: 76 },
   avatars: { flexDirection: 'row' },
   contactTitle: { fontFamily: FONT.display, fontSize: 19, fontWeight: '700' },

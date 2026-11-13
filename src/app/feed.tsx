@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ReportForm } from '@/components/ReportForm';
 import { FONT, useTheme } from '@/components/theme';
-import { Body, Button, Card, ErrorText, Eyebrow, Pill, Screen, Title } from '@/components/ui';
+import { Body, Button, Card, ErrorText, Eyebrow, Pill, Screen, ThemeToggle, Title } from '@/components/ui';
 import { api } from '@/shared/api';
 import { DISTRICT_LABEL, institutionLabel, realSiteFor, toTrending } from '@/shared/feed';
 import type { Trending } from '@/shared/types';
@@ -30,11 +30,14 @@ export default function Feed() {
   return (
     <Screen tone="orange">
       <View style={s.header}>
-        <View style={{ gap: 6, flex: 1, minWidth: 200 }}>
+        <View style={{ gap: 6, flex: 1 }}>
           <Eyebrow>Scam Feed · last 7 days</Eyebrow>
           <Title>Scams in Mauritius this week</Title>
         </View>
-        {data && <Pill label="Live" icon="ellipse" color={t.orange} fg={t.onOrange} />}
+        <View style={s.headRight}>
+          <ThemeToggle />
+          {data && <Pill label="Live" icon="ellipse" color={t.orange} fg={t.onOrange} />}
+        </View>
       </View>
 
       {error ? (
@@ -173,7 +176,8 @@ function Rank({ rank, label, n, max, color }: { rank: number; label: string; n: 
 }
 
 const s = StyleSheet.create({
-  header: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  headRight: { alignItems: 'flex-end', gap: 10 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   stat: { flexGrow: 1, flexBasis: 96, borderWidth: 1, borderRadius: 22, padding: 14, gap: 2 },
   statN: { fontFamily: FONT.display, fontSize: 36, fontWeight: '700' },
