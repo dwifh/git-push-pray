@@ -2,21 +2,27 @@
 //   npm run eval -- record [limit]   calls Jev + Claude on every message (redacted first), appends to data/eval/runs/latest.jsonl;
 //                                    re-running skips ids already recorded, so an interrupted run resumes.
 //   npm run eval -- calibrate        offline: fits src/lib/calibration.json on the dev split, reports on the test split.
+//   npm run eval -- rules            offline, no keys (CI): rule floor per message, and lookalike false positives on
+//                                    data/eval/domains.jsonl (must be 0; exit code 1 otherwise).
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { calibrate, DEFAULT_CALIBRATION, rocAuc, type Calibration, type EvalRow } from '../src/lib/calibration.ts';
 import { callClaude } from '../src/lib/claude.ts';
+import { extractDomains, lookalikeOf } from '../src/lib/extract.ts';
 import { callJevDecision, type JevQuestion } from '../src/lib/jev.ts';
 import { redact } from '../src/lib/redact.ts';
+import { ruleFloor } from '../src/lib/rules.ts';
 import { SIGNAL_NAMES, SIGNALS, scamScore, type SignalName } from '../src/lib/scam-signals.ts';
-import { Level, claudeLevel, jevLevel, maxLevel } from '../src/lib/verdict.ts';
+import { LEVEL_NAME, Level, claudeLevel, jevLevel, maxLevel } from '../src/lib/verdict.ts';
+import { VERDICTS, type Verdict } from '../src/shared/types.ts';
 
-type Message = { id: string; text: string; label: 'scam' | 'genuine'; split: 'dev' | 'test'; channel: string };
+type Message = { id: string; text: string; label: 'scam' | 'genuine'; split: 'dev' | 'test'; channel: string; expected?: Verdict };
 type RunRow = EvalRow & { id: string; split: 'dev' | 'test'; channel: string };
 
 const MESSAGES = 'data/eval/messages.jsonl';
 const RUN = 'data/eval/runs/latest.jsonl';
 const OUT = 'src/lib/calibration.json';
-// Same evidence line for every message: rules and intel are not built yet. Re-record once the pipeline (step 3) exists.
+const DOMAINS = 'data/eval/domains.jsonl';
+// Same evidence line for every message: the pipeline that gathers rules + intel evidence lands in step 3; re-record then.
 const EVIDENCE = 'None available for this message.';
 // Messages only. DIFrauD job ads (WEB) are long postings whose labels hinge on metadata, not message red flags:
 // Jev AUC 0.30 there on 2026-11-13. Fitting on them dragged the cutoffs down; they stay in the report as out-of-domain.
@@ -95,7 +101,41 @@ function calibrateRun() {
   if (missed.length) console.log(`missed scams: ${missed.map((r) => r.id).join(', ')}`);
 }
 
+// Rules only: no intel, community reports or RAG (they need keys), so this is the text + lookalike floor.
+function rulesRun() {
+  const domains = readJsonl<{ domain: string; label: 'good' | 'bad' }>(DOMAINS).map((r) => ({ ...r, domain: r.domain.replaceAll('[.]', '.') }));
+  const good = domains.filter((r) => r.label === 'good');
+  const fp = good.filter((r) => lookalikeOf(r.domain));
+  console.log(`lookalike false positives: ${fp.length}/${good.length} good domains${list(fp.map((r) => r.domain))}`);
+  if (fp.length) process.exitCode = 1;
+
+  const rows = readJsonl<Message>(MESSAGES).map((m) => {
+    const text = redact(m.text);
+    return { m, floor: ruleFloor({ text, domains: extractDomains(text) }).level };
+  });
+  // Rows = expected verdict (3 × 3 once the hand-built Mauritius set lands) or binary label (DIFrauD); columns = rule floor.
+  const table = new Map<string, number[]>();
+  for (const { m, floor } of rows) {
+    const key = m.expected ?? m.label;
+    if (!table.has(key)) table.set(key, [0, 0, 0]);
+    table.get(key)![floor]++;
+  }
+  console.log(`\nrule floor on ${rows.length} messages\n${'expected'.padEnd(11)}${VERDICTS.map((v) => v.padStart(11)).join('')}`);
+  for (const [k, counts] of table) console.log(k.padEnd(11) + counts.map((c) => String(c).padStart(11)).join(''));
+
+  const named = (r: typeof rows) => list(r.map(({ m, floor }) => `${m.id}=${LEVEL_NAME[floor]}`));
+  const missed = rows.filter(({ m, floor }) => m.expected && floor < Level[m.expected]);
+  const unflagged = rows.filter(({ m, floor }) => m.label === 'scam' && floor === Level.SAFE);
+  // A rule false alarm is final: the models can only add risk on top of the floor.
+  const alarms = rows.filter(({ m, floor }) => m.label === 'genuine' && floor > Level.SAFE);
+  console.log(`\nbelow expected: ${missed.length}${named(missed)}`);
+  console.log(`scams the rules leave SAFE (the models must catch them): ${unflagged.length}/${rows.filter(({ m }) => m.label === 'scam').length}`);
+  console.log(`genuine above SAFE: ${alarms.length}/${rows.filter(({ m }) => m.label === 'genuine').length}${named(alarms)}`);
+}
+const list = (items: string[]) => (items.length ? ` (${items.join(', ')})` : '');
+
 const [cmd, arg] = process.argv.slice(2);
 if (cmd === 'record') await record(Number(arg) || Infinity);
 else if (cmd === 'calibrate') calibrateRun();
-else console.log('usage: npm run eval -- record [limit] | calibrate');
+else if (cmd === 'rules') rulesRun();
+else console.log('usage: npm run eval -- record [limit] | calibrate | rules');

@@ -80,7 +80,7 @@ Nothing here trains a model. The data is an **evaluation set**: it checks the re
 `{ "id", "text", "sender"?, "channel": "SMS|WHATSAPP|EMAIL|WEB", "label": "scam|genuine", "split": "dev|test", "institution"?, "expected"?: "SAFE|SUSPICIOUS|HIGH_RISK", "mustFlag"?: [...], "source": "<url>" }`.
 `label` and `split` are required (calibration is binary). Hand-built Mauritius messages also carry `institution` and `expected`; alternate them between `dev` and `test`. Use `id` prefix `mu-`.
 
-**Eval runner** (`npm run eval`, Backend 1). Built: `record` (live Jev + Claude, redacted, resumable) and `calibrate` (offline: fits `src/lib/calibration.json` on `dev` SMS + email, reports on `test`). To do with `rules.ts`: a `rules` mode that needs no keys, runs in CI and prints a 3 × 3 confusion table, the misses and the lookalike false positives on `domains.jsonl`.
+**Eval runner** (`npm run eval`, Backend 1). Built: `record` (live Jev + Claude, redacted, resumable) and `calibrate` (offline: fits `src/lib/calibration.json` on `dev` SMS + email, reports on `test`). Also built: `rules` (offline, no keys, CI-safe): the rule-floor table (3 × 3 once rows carry `expected`), the misses, the genuine messages the rules alone lift above `SAFE`, and the lookalike false positives on `domains.jsonl` (exit code 1 if any).
 
 **Proposed pass bar:** no scam rated `SAFE` (the miss that hurts an elder), and fewer than 10% of genuine messages above `SAFE`.
 **Where we are (2026-11-13, models only, no rules yet, test split SMS + email):** 2/60 scams `SAFE` (both email phishing), 18% of genuine messages above `SAFE`. The rules must close the recall gap; the false alarms come mostly from Claude `SUSPICIOUS` calls (81% precise), so watch them when the real evidence goes into the prompt.

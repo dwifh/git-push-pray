@@ -1,6 +1,15 @@
 // Run: node src/lib/redact.test.ts
 import assert from 'node:assert/strict';
-import { redact } from './redact.ts';
+import { createHash } from 'node:crypto';
+import { redact, senderHash } from './redact.ts';
+
+// senderHash = sha256(salt + normalised sender), hex. Expected value from node:crypto, an independent implementation.
+const expected = createHash('sha256').update('salt+23057123456').digest('hex');
+assert.equal(await senderHash('+230 5712-3456', 'salt'), expected);
+assert.equal(await senderHash(' +230 (5712) 3456 ', 'salt'), expected, 'spacing and punctuation do not change the hash');
+assert.equal(await senderHash('MCB-Alerts', 'salt'), await senderHash('mcb alerts', 'salt'), 'case-insensitive');
+assert.notEqual(await senderHash('+23057123456', 'other'), expected, 'salt changes the hash');
+await assert.rejects(senderHash('+23057123456', ''), 'no salt: refuse, an unsalted phone hash is reversible');
 
 // URL hosts survive; query, fragment and userinfo are dropped.
 assert.equal(redact('https://mcb-secure-2024.com/login?otp=123456'), 'https://mcb-secure-2024.com/login');
