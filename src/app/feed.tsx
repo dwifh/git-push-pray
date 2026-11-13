@@ -94,37 +94,51 @@ export default function Feed() {
             </Card>
           )}
 
-          {data.topDomains.map((d) => {
-            const r = realSiteFor(d.domain);
-            // Addresses are plain text on purpose: never a tappable link to a reported site.
-            return r ? (
-              <Card key={d.domain}>
-                <Eyebrow>Real vs fake address</Eyebrow>
-                <View style={s.addr}>
-                  <Text style={[s.domain, { color: t.text }]}>{r.real}</Text>
-                  <Pill label="Real" icon="checkmark-circle" color={t.blueSoft} fg={t.blue} />
+          {data.topDomains.length > 0 && (
+            <Card>
+              <Eyebrow>Real vs fake addresses</Eyebrow>
+              <Body>Only trust the real address. Do not open the fake ones.</Body>
+              <View accessibilityRole="table" style={[s.table, { borderColor: t.border }]}>
+                <View accessibilityRole="row" style={[s.tr, { backgroundColor: t.cardHi, borderColor: t.border }]}>
+                  <View style={[s.cReal, s.thRow]}>
+                    <Ionicons name="checkmark-circle" size={18} color={t.blue} />
+                    <Text style={[s.th, { color: t.blue }]}>Real</Text>
+                  </View>
+                  <View style={[s.cFake, s.thRow]}>
+                    <Ionicons name="warning" size={18} color={t.orange} />
+                    <Text style={[s.th, { color: t.orange }]}>Fake</Text>
+                  </View>
+                  <View style={[s.cCount, { alignItems: 'flex-end' }]} accessibilityLabel="Reports">
+                    <Ionicons name="megaphone" size={18} color={t.muted} />
+                  </View>
                 </View>
-                <View style={s.addr}>
-                  <Text style={[s.domain, { color: t.text }]}>
-                    {r.same}
-                    <Text style={{ backgroundColor: t.orangeSoft, color: t.orange }}>{r.extra}</Text>
-                  </Text>
-                  <Pill label="Fake" icon="warning" color={t.orange} fg={t.onOrange} />
-                </View>
-                <Body>Pretends to be {r.name} · reported {d.count}×. Do not open it.</Body>
-              </Card>
-            ) : (
-              <Card key={d.domain}>
-                <Eyebrow>Fake website reported</Eyebrow>
-                <View style={s.addr}>
-                  <Ionicons name="warning" size={22} color={t.orange} />
-                  <Text style={[s.domain, { color: t.text }]}>{d.domain}</Text>
-                  <Pill label={`Reported ${d.count}×`} color={t.orangeSoft} fg={t.orange} />
-                </View>
-                <Body>Do not open it.</Body>
-              </Card>
-            );
-          })}
+                {data.topDomains.map((d, i) => {
+                  const r = realSiteFor(d.domain);
+                  const last = i === data.topDomains.length - 1;
+                  // Addresses are plain text on purpose: never a tappable link to a reported site.
+                  return (
+                    <View
+                      key={d.domain}
+                      accessibilityRole="row"
+                      accessibilityLabel={`${r ? `${r.name}: real site ${r.real}` : 'Real site not known'}. Fake site ${d.domain}. Reported ${d.count} times.`}
+                      style={[s.tr, !last && { borderBottomWidth: 1, borderColor: t.border }]}>
+                      <View style={s.cReal}>
+                        <Text style={[s.org, { color: t.muted }]}>{r ? r.name : 'Not known'}</Text>
+                        {r && <Text style={[s.domain, { color: t.text }]}>{r.real}</Text>}
+                      </View>
+                      <View style={s.cFake}>
+                        <Text style={[s.domain, { color: t.text }]}>
+                          {r?.same}
+                          <Text style={{ backgroundColor: t.orangeSoft, color: t.orange }}>{r ? r.extra : d.domain}</Text>
+                        </Text>
+                      </View>
+                      <Text style={[s.cCount, s.count, { color: t.orange }]}>{d.count}×</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </Card>
+          )}
         </>
       )}
       <Button label="Report a scam" icon="megaphone" onPress={() => setReporting(true)} />
@@ -178,6 +192,15 @@ const s = StyleSheet.create({
   col: { flex: 1, borderRadius: 6, minHeight: 8 },
   distRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 40 },
   distLabel: { fontFamily: FONT.body, fontSize: 18, flex: 1 },
-  addr: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, minHeight: 44 },
-  domain: { fontFamily: FONT.mono, fontSize: 17, flex: 1, minWidth: 160 },
+  table: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
+  tr: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 12, minHeight: 52 },
+  cReal: { flex: 1, minWidth: 0, gap: 2 },
+  cFake: { flex: 1.15, minWidth: 0 },
+  cCount: { width: 34, textAlign: 'right' },
+  thRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  th: { fontFamily: FONT.body, fontSize: 15, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  org: { fontFamily: FONT.body, fontSize: 15, fontWeight: '700' },
+  count: { fontFamily: FONT.display, fontSize: 19, fontWeight: '700' },
+  // Wraps after a hyphen first; breaks mid-word only when it must, so the table never runs off a narrow phone.
+  domain: { fontFamily: FONT.mono, fontSize: 15, lineHeight: 21, overflowWrap: 'anywhere' } as object,
 });
