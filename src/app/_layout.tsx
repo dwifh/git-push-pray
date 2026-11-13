@@ -5,8 +5,8 @@ export default function RootLayout() {
   return (
     <Tabs>
       <Tabs.Screen name="index" options={{ title: 'Scan' }} />
-      <Tabs.Screen name="coach" options={{ title: 'Coach' }} />
-      <Tabs.Screen name="feed" options={{ title: 'Feed' }} />
+      <Tabs.Screen name="coach" options={{ title: 'Coach', headerShown: false }} />
+      <Tabs.Screen name="feed" options={{ title: 'Feed', headerShown: false }} />
       <Tabs.Screen name="email" options={{ title: 'Email' }} />
     </Tabs>
   );
