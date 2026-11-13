@@ -1,0 +1,52 @@
+# Powered to Protect — Scam Shield Mauritius (Hackathon Prototype)
+
+Mobile-first Expo PWA that protects everyday Mauritians, especially elderly people, from scams, phishing and social engineering. Theme: "Powered to Protect". Hackathon is time-boxed: lean, YAGNI, demo-ready, zero crashes, every external call degrades gracefully.
+
+**Read `docs/PLAN.md` before writing any feature code.** It holds the locked decisions, the module map, the verdict rules and the ordered build steps. Port reusable code from `docs/PORTED-CODE.md` rather than rewriting it.
+
+## Stack
+- Expo + React Native + Expo Router, `web.output: "server"`. **Demo target is the web PWA only**, deployed on EAS Hosting (Cloudflare Workers runtime: no filesystem writes, no native Node modules, use `fetch` + Web Crypto).
+- Backend: Expo Router API routes `src/app/api/*+api.ts`.
+- LLMs and embeddings via OpenRouter (`openai` SDK + raw `fetch`). Persistence: Turso (`@libsql/client/web`) with in-memory fallback.
+
+## Features (depth is deliberate)
+1. **Scam Shield** (deep): paste a message (+ optional sender) in the PWA → verdict `SAFE | SUSPICIOUS | HIGH_RISK` + plain-English red flags + one-tap actions.
+2. **Elder Call Coach** (deep): big-button yes/no questions scored on-device; "HANG UP NOW — THIS IS A SCAM" screen; alert the trusted contact on WhatsApp.
+
+**WhatsApp is outbound only**: the server sends approved message templates through the Meta Graph API (`/api/alert`) to the user's trusted contact. There is no webhook and no inbound WhatsApp scanning.
+3. **Scam Feed** (shallow): ranked list/bars of active campaigns by institution and district; rate-limited anonymous reports.
+4. **Email Guard** (shallow): paste raw headers/`.eml` → importance (`URGENT | ROUTINE | PROMOTIONAL`) + phishing verdict + human-in-the-loop review card.
+
+Out of scope, mention only as "next": inbound WhatsApp (webhook) scanning, SMS interception, native share-sheet, native builds, IMAP/Gmail OAuth, live call audio, user accounts.
+
+## Pipeline — `runScanPipeline()` in `src/lib/scan-pipeline.ts`
+Shared by `/api/scan` and `/api/email`. Order is fixed:
+1. **Redact** PII (`src/lib/redact.ts`) — everything downstream sees redacted text only.
+2. **Extract + rules**: URLs → registrable domains; deterministic red-flag rules; lookalike-domain check against the official allowlist.
+3. **Evidence** in parallel, each with a 3s timeout and an `unknown` result on failure: VirusTotal domain lookup, URLhaus host lookup, community reports for the domain, RAG top matches.
+4. **Tier 1 — Jev** (`typesafe/jev-1.13`, OpenRouter Decisions API): scam-signal probabilities → noisy-OR score; clarifier (`isFragment`, `missingField: sender | link | full_text | none`). Clarify only when the rule floor is below `HIGH_RISK`; a clear scam is never stalled by a question.
+5. **Tier 3 — Claude** (`~anthropic/claude-sonnet-latest`): one call, strict JSON schema, **no tools**, untrusted text passed as data.
+6. **Verdict = max(rule floor, Jev level, Claude verdict)**. Every input can only raise risk. Claude/Jev failure → verdict from what succeeded.
+
+There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety agent are removed.
+
+## Security rules (non-negotiable)
+- **Monotonic verdict**: untrusted content can raise risk, never lower it. Code owns the floor; models only add.
+- **Redact before egress**: no raw message, email body, phone number, card/account number, NIC or OTP reaches an LLM, a log, or the Feed. Raw text is never logged.
+- **Never fetch untrusted URLs** (no previews, no redirect expansion, no HEAD). Threat intel is looked up by domain only; full URLs are never submitted to VirusTotal.
+- **Allowlisted official domains** can never be flagged by community reports.
+- Secrets (`OPENROUTER_API_KEY`, `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `TURSO_*`, `HASH_SALT`) live only in `src/lib/` (server-only) and EAS env; nothing secret in `EXPO_PUBLIC_*`. Client-safe shared logic lives in `src/shared/`.
+- Every API route: rate limit (`ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE`, `ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE`) → validate input (type, length) → try/catch with a friendly error.
+- WhatsApp sends: only approved templates by name from a server-side allowlist; every Graph API call carries `appsecret_proof` (HMAC-SHA256 of `WHATSAPP_TOKEN` keyed with `WHATSAPP_APP_SECRET`); template variables are redacted, single-line, length-capped and **never contain a URL** (we never spread a scam link). Strict per-IP rate limit on `/api/alert`.
+- The trusted contact number lives in device `localStorage`; the server receives it per request to send, and never stores or logs it.
+- Every WhatsApp send has a device-side fallback (`wa.me` pre-filled link). Other actions are links too (`tel:`, MAUCORS URL).
+
+## UX rules
+- `SAFE` is worded "No known scam signs found", never "This is safe".
+- Elder-first: large text, high contrast, one decision per screen, big tap targets.
+- English only.
+
+## Workflow
+- Ponytail (minimal diffs). `/tdd` for every pure module in `src/lib/` and `src/shared/`. `npm test` runs the node-assert self-checks. `/ponytail-review` before the demo.
+- Edit `data/knowledge-base.json`, then `npm run seed` to regenerate `data/knowledge-vectors.json`.
+- Knowledge-base content and allowlisted domains are unverified until a teammate checks them against official sources; never present them as official.

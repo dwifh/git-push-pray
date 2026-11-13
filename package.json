@@ -39,6 +39,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "salt": "node scripts/gen-salt.mjs",
     "typecheck": "expo customize tsconfig.json && tsc --noEmit"
   },
   "private": true
