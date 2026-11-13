@@ -7,7 +7,7 @@ import { POST as coach } from '../app/api/coach+api.ts';
 import { GET as feed, POST as report } from '../app/api/reports+api.ts';
 import { memoryStore, type ReportRow, type Store } from './reports.ts';
 
-delete process.env.TURSO_DATABASE_URL; // never reach the real DB, even if a test moves above useStore()
+delete process.env.TURSO_DATABASE_URL; // never reach the real DB, even if a test moves above setStore()
 Object.assign(process.env, {
   ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE: '10',
   ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE: '60',
@@ -112,9 +112,9 @@ for (let i = 0; i < 10; i++) assert.equal((await send(coach(post({ text: 'hello'
 assertError(await send(coach(post({ text: 'hello' }, 'c5'))), 429, 'coach rate limit');
 
 // /api/reports: POST validates (400), stores a redacted row (ok: true), and GET shows it in the Feed.
-const useStore = (s: Store) => ((globalThis as { __reportsStore?: Store }).__reportsStore = s);
+const setStore = (s: Store) => ((globalThis as { __reportsStore?: Store }).__reportsStore = s);
 const rows: ReportRow[] = [];
-useStore(memoryStore(rows));
+setStore(memoryStore(rows));
 const get = (ip: string) => new Request('http://x/api/reports', { headers: { 'cf-connecting-ip': ip } });
 assert.deepEqual(await send(feed(get('r0'))), { status: 200, body: { total: 0, byInstitution: [], byDistrict: [], topDomains: [] } });
 const validReport = { institution: 'MAURITIUS_POST', vector: 'SMS', district: 'MOKA', domain: 'https://pay.parcel-track-mu.com/x', snippet: 'Pay Rs 50 at 5712 3456' };
@@ -134,12 +134,12 @@ assert.deepEqual(shown.topDomains, [{ key: 'parcel-track-mu.com', count: 1 }]);
 assert.deepEqual(shown.byInstitution, [{ key: 'MAURITIUS_POST', count: 1 }]);
 
 // Store failure → 502 { error }.
-useStore({ ...memoryStore([]), add: () => Promise.reject(new Error('down')), since: () => Promise.reject(new Error('down')) });
+setStore({ ...memoryStore([]), add: () => Promise.reject(new Error('down')), since: () => Promise.reject(new Error('down')) });
 assertError(await send(report(post(validReport, 'r2'))), 502, 'report store down');
 assertError(await send(feed(get('r2'))), 502, 'feed store down');
 
 // 10 per IP per minute → 429, per route: the Feed GET has its own bucket.
-useStore(memoryStore([]));
+setStore(memoryStore([]));
 for (let i = 0; i < 10; i++) assert.equal((await send(report(post(validReport, 'r3')))).status, 200);
 assertError(await send(report(post(validReport, 'r3'))), 429, 'report rate limit');
 assert.equal((await send(feed(get('r3')))).status, 200);

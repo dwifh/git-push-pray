@@ -4,6 +4,7 @@ import { DEFAULT_CALIBRATION, type Calibration, type Verdict } from './calibrati
 import { SIGNAL_NAMES } from './scam-signals.ts';
 
 export const Level = { SAFE: 0, SUSPICIOUS: 1, HIGH_RISK: 2 } as const;
+// eslint-disable-next-line @typescript-eslint/no-redeclare -- value + type share the name on purpose (enum-like)
 export type Level = (typeof Level)[keyof typeof Level];
 export const LEVEL_NAME: Record<Level, Verdict> = { 0: 'SAFE', 1: 'SUSPICIOUS', 2: 'HIGH_RISK' };
 
