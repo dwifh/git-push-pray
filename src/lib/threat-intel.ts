@@ -17,6 +17,7 @@ export const SHARED_HOSTS = new Set([
 
 export const refang = (d: string) => d.replaceAll('[.]', '.');
 
+const normalise = (d: string) => d.trim().toLowerCase().replace(/\.$/, '');
 const DOMAIN = /^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/;
 const UNKNOWN: Intel = { vt: 'unknown', urlhaus: 'unknown' };
 // shortcut: per-isolate Map, lost on cold start; fine for a demo, move to Turso/KV if quota bites.
@@ -32,8 +33,8 @@ async function vtLookup(domain: string, f: typeof fetch, timeoutMs: number): Pro
     });
     if (!res.ok) return 'unknown';
     const s = (await res.json())?.data?.attributes?.last_analysis_stats;
-    const ok = (n: unknown) => Number.isInteger(n) && (n as number) >= 0;
-    return ok(s?.malicious) && ok(s?.suspicious) ? { malicious: s.malicious, suspicious: s.suspicious } : 'unknown';
+    const count = (n: unknown) => Number.isInteger(n) && (n as number) >= 0;
+    return count(s?.malicious) && count(s?.suspicious) ? { malicious: s.malicious, suspicious: s.suspicious } : 'unknown';
   } catch {
     return 'unknown';
   }
@@ -56,7 +57,7 @@ async function urlhausLookup(host: string, f: typeof fetch, timeoutMs: number): 
 }
 
 export async function checkDomain(domain: string, { fetch: f = fetch, timeoutMs = 3000 }: Opts = {}): Promise<Intel> {
-  const d = domain.trim().toLowerCase().replace(/\.$/, '');
+  const d = normalise(domain);
   if (!DOMAIN.test(d)) return UNKNOWN; // never send anything that is not a bare domain
   const hit = cache.get(d);
   if (hit) return hit;
@@ -70,6 +71,6 @@ export async function checkDomain(domain: string, { fetch: f = fetch, timeoutMs 
 // (VirusTotal had google.com at malicious 1 on 2026-11-13), so the weak signal needs two votes.
 export function intelLevel(host: string, { vt, urlhaus }: Intel): Level {
   const strong = urlhaus === 'listed' || (vt !== 'unknown' && vt.malicious >= 2);
-  if (strong) return SHARED_HOSTS.has(host.toLowerCase()) ? Level.SUSPICIOUS : Level.HIGH_RISK;
+  if (strong) return SHARED_HOSTS.has(normalise(host)) ? Level.SUSPICIOUS : Level.HIGH_RISK;
   return vt !== 'unknown' && vt.malicious + vt.suspicious >= 2 ? Level.SUSPICIOUS : Level.SAFE;
 }

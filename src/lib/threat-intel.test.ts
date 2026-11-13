@@ -46,6 +46,7 @@ assert.equal(intelLevel('google.com', { vt: { malicious: 1, suspicious: 0 }, url
 const hit = { vt: { malicious: 9, suspicious: 0 }, urlhaus: 'listed' } as const;
 assert.equal(intelLevel('github.com', hit), Level.SUSPICIOUS);
 assert.equal(intelLevel('drive.google.com', hit), Level.SUSPICIOUS);
+assert.equal(intelLevel('GitHub.com.', hit), Level.SUSPICIOUS, 'normalised like checkDomain');
 assert.equal(intelLevel('evil.workers.dev', hit), Level.HIGH_RISK);
 assert.equal(intelLevel('evil.pages.dev', hit), Level.HIGH_RISK);
 

@@ -76,7 +76,7 @@ assert.equal(allowRequest('alert', 'd', 5, 3, t + 60_002), true, 'global cap is 
 console.log('rate-limit ok');
 ```
 
-## `src/lib/rag.ts` (unchanged)
+## `src/lib/rag.ts` (landed 2026-11-13, since changed: injectable `fetch`/`kb`/`timeoutMs`, returns `[]` on any failure, results carry `id` + `institution`; the repo is the source of truth)
 ```ts
 // Server-only. Vectors and their model come from `npm run seed` (scripts/seed-knowledge.mjs).
 import kb from '../../data/knowledge-vectors.json';
