@@ -74,26 +74,24 @@ export default function Home() {
         </Link>
       ))}
 
-      <Link href="/feed" asChild>
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel={data ? `Mauritius Scam Snapshot: ${n(data.byInstitution.reduce((a, r) => a + r.count, 0))} reports this week, ${n(data.topDomains.length)} fake websites, ${n(data.byInstitution.length)} names copied. Open the Scam Feed.` : 'Mauritius Scam Snapshot. Open the Scam Feed.'}
-          style={StyleSheet.flatten([s.snap, { backgroundColor: t.card, borderColor: t.border }])}>
-          <View style={s.snapHead}>
-            <Ionicons name="location" size={26} color={t.teal} />
-            <Text style={[s.snapTitle, { color: t.text }]}>Mauritius Scam Snapshot</Text>
-            <Ionicons name="chevron-forward" size={24} color={t.muted} />
-          </View>
-          <View style={s.stats}>
-            <Stat n={n(data?.byInstitution.reduce((a, r) => a + r.count, 0))} label="reports this week" color={t.teal} />
-            <View style={[s.divider, { backgroundColor: t.border }]} />
-            <Stat n={n(data?.topDomains.length)} label="fake websites" color={t.orange} />
-            <View style={[s.divider, { backgroundColor: t.border }]} />
-            <Stat n={n(data?.byInstitution.length)} label="names copied" color={t.blue} />
-          </View>
-          {data === null && <Text style={[s.fText, { color: t.muted }]}>Numbers will show when you are online.</Text>}
-        </Pressable>
-      </Link>
+      {/* Information only: not a button. */}
+      <View
+        accessible
+        accessibilityLabel={data ? `Mauritius Scam Snapshot: ${n(data.byInstitution.reduce((a, r) => a + r.count, 0))} reports this week, ${n(data.topDomains.length)} fake websites, ${n(data.byInstitution.length)} names copied.` : 'Mauritius Scam Snapshot.'}
+        style={[s.snap, { backgroundColor: t.card, borderColor: t.border }]}>
+        <View style={s.snapHead}>
+          <Ionicons name="location" size={26} color={t.teal} />
+          <Text style={[s.snapTitle, { color: t.text }]}>Mauritius Scam Snapshot</Text>
+        </View>
+        <View style={s.stats}>
+          <Stat n={n(data?.byInstitution.reduce((a, r) => a + r.count, 0))} label="reports this week" color={t.teal} />
+          <View style={[s.divider, { backgroundColor: t.border }]} />
+          <Stat n={n(data?.topDomains.length)} label="fake websites" color={t.orange} />
+          <View style={[s.divider, { backgroundColor: t.border }]} />
+          <Stat n={n(data?.byInstitution.length)} label="names copied" color={t.blue} />
+        </View>
+        {data === null && <Text style={[s.fText, { color: t.muted }]}>Numbers will show when you are online.</Text>}
+      </View>
     </Screen>
   );
 }
