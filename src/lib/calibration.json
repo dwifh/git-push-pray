@@ -1,13 +1,13 @@
 {
   "jev": {
-    "n": 120,
-    "auc": 0.973,
+    "n": 147,
+    "auc": 0.96,
     "signalAuc": {
-      "asksForSecret": 0.932,
-      "paymentRequest": 0.898,
-      "impersonation": 0.972,
-      "pressure": 0.874,
-      "tooGoodToBeTrue": 0.891
+      "asksForSecret": 0.929,
+      "paymentRequest": 0.883,
+      "impersonation": 0.955,
+      "pressure": 0.892,
+      "tooGoodToBeTrue": 0.899
     },
     "weights": {
       "asksForSecret": 1,
@@ -17,51 +17,51 @@
       "tooGoodToBeTrue": 0.4
     },
     "suspicious": 0.3,
-    "highRisk": 0.7,
+    "highRisk": 0.702,
     "reliability": [
       {
         "from": 0,
         "to": 0.2,
-        "n": 58,
-        "scamRate": 0.086
+        "n": 62,
+        "scamRate": 0.081
       },
       {
         "from": 0.2,
         "to": 0.4,
-        "n": 11,
-        "scamRate": 0.455
+        "n": 13,
+        "scamRate": 0.385
       },
       {
         "from": 0.4,
         "to": 0.6,
-        "n": 13,
-        "scamRate": 0.923
+        "n": 14,
+        "scamRate": 0.786
       },
       {
         "from": 0.6,
         "to": 0.8,
-        "n": 30,
-        "scamRate": 1
+        "n": 33,
+        "scamRate": 0.939
       },
       {
         "from": 0.8,
         "to": 1,
-        "n": 8,
+        "n": 25,
         "scamRate": 1
       }
     ]
   },
   "claude": {
-    "n": 101,
-    "accuracy": 0.96,
+    "n": 126,
+    "accuracy": 0.929,
     "precision": {
-      "SUSPICIOUS": 0.842,
+      "SUSPICIOUS": 0.619,
       "HIGH_RISK": 1
     },
     "highRiskTrusted": true
   },
   "fittedOn": {
-    "rows": 120,
+    "rows": 147,
     "run": "data/eval/runs/latest.jsonl",
     "date": "2026-11-13"
   }
