@@ -1,6 +1,6 @@
 // Run: node src/shared/feed.test.ts
 import assert from 'node:assert/strict';
-import { DISTRICT_LABEL, institutionLabel, toTrending } from './feed.ts';
+import { DISTRICT_LABEL, institutionLabel, realSiteFor, toTrending } from './feed.ts';
 import { DISTRICTS, INSTITUTIONS } from './types.ts';
 
 const expected = {
@@ -27,5 +27,16 @@ assert.deepEqual(toTrending(null), { byInstitution: [], byDistrict: [], topDomai
 for (const i of INSTITUTIONS) assert.ok(institutionLabel(i));
 for (const d of DISTRICTS) assert.ok(DISTRICT_LABEL[d]);
 assert.equal(institutionLabel('POLICE'), 'Police');
+
+// Real vs fake address: the official site a reported domain copies, and the part that differs.
+assert.deepEqual(realSiteFor('mcb-secure-login.com'), { real: 'mcb.mu', name: 'MCB', same: 'mcb', extra: '-secure-login.com' });
+assert.deepEqual(realSiteFor('parcel-track-mu.com'), { real: 'mauritiuspost.mu', name: 'Mauritius Post', same: '', extra: 'parcel-track-mu.com' });
+assert.deepEqual(realSiteFor('mauritiuspost-delivery.top'), { real: 'mauritiuspost.mu', name: 'Mauritius Post', same: 'mauritiuspost', extra: '-delivery.top' });
+assert.equal(realSiteFor('sbm-refund.xyz')?.real, 'sbmgroup.mu');
+assert.equal(realSiteFor('my-t-promo.win'), null, 'needs the whole token, not a fragment');
+assert.equal(realSiteFor('lexpress-mu-news.top'), null, 'no known brand → no real site shown');
+assert.equal(realSiteFor('postcard-shop.com'), null, '"post" must be a whole word');
+assert.equal(realSiteFor('mcb.mu'), null, 'the official site itself is never a fake');
+assert.equal(realSiteFor('login.mcb.mu'), null, 'nor its subdomains');
 
 console.log('feed ok');

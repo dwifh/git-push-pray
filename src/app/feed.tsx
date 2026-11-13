@@ -5,7 +5,7 @@ import { ReportForm } from '@/components/ReportForm';
 import { FONT, useTheme } from '@/components/theme';
 import { Body, Button, Card, ErrorText, Eyebrow, Pill, Screen, Title } from '@/components/ui';
 import { api } from '@/shared/api';
-import { DISTRICT_LABEL, institutionLabel, toTrending } from '@/shared/feed';
+import { DISTRICT_LABEL, institutionLabel, realSiteFor, toTrending } from '@/shared/feed';
 import type { Trending } from '@/shared/types';
 
 export default function Feed() {
@@ -94,20 +94,37 @@ export default function Feed() {
             </Card>
           )}
 
-          {data.topDomains.length > 0 && (
-            <Card>
-              <Eyebrow>Fake websites reported</Eyebrow>
-              <Body>Do not open these.</Body>
-              {data.topDomains.map((d) => (
-                // Plain text on purpose: never a tappable link to a reported site.
-                <View key={d.domain} style={[s.domainRow, { borderColor: t.border }]}>
+          {data.topDomains.map((d) => {
+            const r = realSiteFor(d.domain);
+            // Addresses are plain text on purpose: never a tappable link to a reported site.
+            return r ? (
+              <Card key={d.domain}>
+                <Eyebrow>Real vs fake address</Eyebrow>
+                <View style={s.addr}>
+                  <Text style={[s.domain, { color: t.text }]}>{r.real}</Text>
+                  <Pill label="Real" icon="checkmark-circle" color={t.blueSoft} fg={t.blue} />
+                </View>
+                <View style={s.addr}>
+                  <Text style={[s.domain, { color: t.text }]}>
+                    {r.same}
+                    <Text style={{ backgroundColor: t.orangeSoft, color: t.orange }}>{r.extra}</Text>
+                  </Text>
+                  <Pill label="Fake" icon="warning" color={t.orange} fg={t.onOrange} />
+                </View>
+                <Body>Pretends to be {r.name} · reported {d.count}×. Do not open it.</Body>
+              </Card>
+            ) : (
+              <Card key={d.domain}>
+                <Eyebrow>Fake website reported</Eyebrow>
+                <View style={s.addr}>
                   <Ionicons name="warning" size={22} color={t.orange} />
                   <Text style={[s.domain, { color: t.text }]}>{d.domain}</Text>
                   <Pill label={`Reported ${d.count}×`} color={t.orangeSoft} fg={t.orange} />
                 </View>
-              ))}
-            </Card>
-          )}
+                <Body>Do not open it.</Body>
+              </Card>
+            );
+          })}
         </>
       )}
       <Button label="Report a scam" icon="megaphone" onPress={() => setReporting(true)} />
@@ -161,6 +178,6 @@ const s = StyleSheet.create({
   col: { flex: 1, borderRadius: 6, minHeight: 8 },
   distRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 40 },
   distLabel: { fontFamily: FONT.body, fontSize: 18, flex: 1 },
-  domainRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, minHeight: 48, borderTopWidth: 1, paddingTop: 10 },
+  addr: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, minHeight: 44 },
   domain: { fontFamily: FONT.mono, fontSize: 17, flex: 1, minWidth: 160 },
 });
