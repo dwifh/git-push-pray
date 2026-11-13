@@ -15,6 +15,10 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="theme-color" content="#208AEF" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icon.png" />
+        {/* Design fonts; if offline, the system font is used instead. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" />
         <ScrollViewStyleReset />
         {headNodes}
       </head>

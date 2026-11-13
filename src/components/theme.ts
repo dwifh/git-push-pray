@@ -1,17 +1,39 @@
+import { useSyncExternalStore } from 'react';
 import { useColorScheme } from 'react-native';
 
-// Teal = safe actions, orange = danger. Text/background pairs checked for ≥ 4.5:1 contrast.
+// Teal = safe actions, orange = danger, indigo = neutral. Text/background pairs checked for ≥ 4.5:1 contrast.
 const dark = {
-  bg: '#070B14', card: '#0F1626', border: '#1F2A40', text: '#F1F5F9', muted: '#9AA8BC',
-  teal: '#4FE0C4', onTeal: '#04231D', tealSoft: '#0E2A2A', orange: '#FF7A45', onOrange: '#1A0A03', orangeSoft: '#2A1712', blue: '#8B9CFF',
+  bg: '#060B14', card: '#0F1626', cardHi: '#141D30', border: '#1F2A40', text: '#F1F5F9', muted: '#9AA8BC',
+  teal: '#4FE0C4', tealDeep: '#2BB89E', onTeal: '#04231D', tealSoft: '#0E2A2A',
+  orange: '#FF7A45', orangeDeep: '#E5531F', onOrange: '#1A0A03', orangeSoft: '#2A1712',
+  blue: '#8B9CFF', blueSoft: '#1A2147', purple: '#6D4C9F', grid: 'rgba(148,163,184,0.06)',
 };
 const light: typeof dark = {
-  bg: '#F1F4F9', card: '#FFFFFF', border: '#D5DDE8', text: '#0B1220', muted: '#56657B',
-  teal: '#0B7A66', onTeal: '#FFFFFF', tealSoft: '#E3F5F1', orange: '#C2410C', onOrange: '#FFFFFF', orangeSoft: '#FFEDE5', blue: '#2B4FD6',
+  bg: '#F1F4F9', card: '#FFFFFF', cardHi: '#F7F9FC', border: '#D5DDE8', text: '#0B1220', muted: '#56657B',
+  teal: '#0B7A66', tealDeep: '#08624F', onTeal: '#FFFFFF', tealSoft: '#E3F5F1',
+  orange: '#C2410C', orangeDeep: '#9A3412', onOrange: '#FFFFFF', orangeSoft: '#FFEDE5',
+  blue: '#2B4FD6', blueSoft: '#E6EBFF', purple: '#6D4C9F', grid: 'rgba(15,23,42,0.05)',
 };
 
 export type Theme = typeof dark;
-export const useTheme = () => (useColorScheme() === 'dark' ? dark : light);
+const noSubscribe = () => () => {};
+// The server can't see the phone's colour scheme: hydrate with light, then switch, so no stale server styles stay.
+export function useTheme() {
+  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
+  return useColorScheme() === 'dark' && hydrated ? dark : light;
+}
 
-// The HANG UP screen is red in both modes (CLAUDE.md); white on this red is 6.5:1.
-export const ALARM = { bg: '#B3261E', text: '#FFFFFF', soft: 'rgba(255,255,255,0.14)' };
+// Headings and numbers: Space Grotesk; body: Inter (loaded in +html.tsx). System fonts if offline.
+export const FONT = {
+  display: '"Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  body: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+};
+
+// The HANG UP screen is red in both modes (CLAUDE.md); white on this red is 8.6:1.
+export const ALARM = { bg: '#8E1B14', glow: '#FF7A45', text: '#FFFFFF', soft: 'rgba(255,255,255,0.12)', line: 'rgba(255,255,255,0.28)' };
+
+// Web-only CSS (the demo is the web PWA). Plain gradients/shadows: cheap on low-end phones, fine on Safari.
+// Cast because React Native's style types don't list backgroundImage.
+export const css = (style: Record<string, string>) => style as object;
+export const glow = (color: string, size = 28) => css({ boxShadow: `0 0 ${size}px ${color}66` });

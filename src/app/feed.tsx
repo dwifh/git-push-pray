@@ -2,8 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ReportForm } from '@/components/ReportForm';
-import { useTheme } from '@/components/theme';
-import { Body, Button, Card, ErrorText, Eyebrow, Screen, Title } from '@/components/ui';
+import { FONT, useTheme } from '@/components/theme';
+import { Body, Button, Card, ErrorText, Eyebrow, Pill, Screen, Title } from '@/components/ui';
 import { api } from '@/shared/api';
 import { DISTRICT_LABEL, institutionLabel, toTrending } from '@/shared/feed';
 import type { Trending } from '@/shared/types';
@@ -26,11 +26,15 @@ export default function Feed() {
   if (reporting) return <ReportForm onDone={(sent) => { setReporting(false); if (sent) setReload((n) => n + 1); }} />;
 
   const top = data?.byInstitution[0];
+  const total = data?.byInstitution.reduce((n, r) => n + r.count, 0) ?? 0;
   return (
-    <Screen>
-      <View style={{ gap: 6 }}>
-        <Eyebrow>Scam Feed · last 7 days</Eyebrow>
-        <Title>Scams in Mauritius this week</Title>
+    <Screen tone="orange">
+      <View style={s.header}>
+        <View style={{ gap: 6, flex: 1, minWidth: 200 }}>
+          <Eyebrow>Scam Feed · last 7 days</Eyebrow>
+          <Title>Scams in Mauritius this week</Title>
+        </View>
+        {data && <Pill label="Live" icon="ellipse" color={t.orange} fg={t.onOrange} />}
       </View>
 
       {error ? (
@@ -43,25 +47,53 @@ export default function Feed() {
       ) : (
         <>
           <View style={s.stats}>
-            <Stat n={data.byInstitution.reduce((n, r) => n + r.count, 0)} label="reports this week" />
-            <Stat n={data.byInstitution.length} label="organisations faked" color={t.orange} />
+            <Stat n={total} label="reports this week" />
+            <Stat n={data.byInstitution.length} label="names copied" color={t.orange} />
             <Stat n={data.topDomains.length} label="fake websites" />
           </View>
+
           {top ? (
             <View style={[s.trend, { backgroundColor: t.orangeSoft, borderColor: t.orange }]}>
-              <View style={[s.trendIcon, { backgroundColor: t.bg }]}>
+              <View style={[s.trendIcon, { backgroundColor: t.card }]}>
                 <Ionicons name="trending-up" size={28} color={t.orange} />
               </View>
               <View style={{ flex: 1, gap: 4 }}>
-                <Eyebrow color={t.orange}>Most reported</Eyebrow>
+                <Eyebrow color={t.orange}>Trending in Mauritius</Eyebrow>
                 <Text style={[s.trendText, { color: t.text }]}>Messages pretending to be {institutionLabel(top.institution)} · {top.count} reports</Text>
               </View>
             </View>
           ) : (
             <Card><Body>No reports this week yet.</Body></Card>
           )}
-          <Bars title="Pretending to be" color={t.orange} rows={data.byInstitution.map((r) => [institutionLabel(r.institution), r.count])} />
-          <Bars title="Where people saw them" color={t.teal} rows={data.byDistrict.map((r) => [DISTRICT_LABEL[r.district], r.count])} />
+
+          {data.byInstitution.length > 0 && (
+            <View style={{ gap: 10 }}>
+              <Eyebrow>Pretending to be</Eyebrow>
+              {/* Top 5 only: a shorter list is easier to read. */}
+              {data.byInstitution.slice(0, 5).map((r, i) => (
+                <Rank key={r.institution} rank={i + 1} label={institutionLabel(r.institution)} n={r.count} max={data.byInstitution[0].count} color={i === 0 ? t.orange : t.blue} />
+              ))}
+            </View>
+          )}
+
+          {data.byDistrict.length > 0 && (
+            <Card>
+              <Eyebrow>Where people saw them</Eyebrow>
+              <View style={s.chart} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                {data.byDistrict.slice(0, 6).map((r, i) => (
+                  <View key={r.district} style={[s.col, { height: `${Math.max(12, (r.count / data.byDistrict[0].count) * 100)}%`, backgroundColor: i === 0 ? t.orange : i < 3 ? t.teal : t.border }]} />
+                ))}
+              </View>
+              {data.byDistrict.slice(0, 5).map((r, i) => (
+                <View key={r.district} style={s.distRow} accessible accessibilityLabel={`${DISTRICT_LABEL[r.district]}: ${r.count} reports`}>
+                  <View style={[s.dot, { backgroundColor: i === 0 ? t.orange : i < 3 ? t.teal : t.muted }]} />
+                  <Text style={[s.distLabel, { color: t.text }]}>{DISTRICT_LABEL[r.district]}</Text>
+                  <Text style={[s.num, { color: t.text }]}>{r.count}</Text>
+                </View>
+              ))}
+            </Card>
+          )}
+
           {data.topDomains.length > 0 && (
             <Card>
               <Eyebrow>Fake websites reported</Eyebrow>
@@ -71,7 +103,7 @@ export default function Feed() {
                 <View key={d.domain} style={[s.domainRow, { borderColor: t.border }]}>
                   <Ionicons name="warning" size={22} color={t.orange} />
                   <Text style={[s.domain, { color: t.text }]}>{d.domain}</Text>
-                  <Text style={[s.count, { color: t.muted }]}>{d.count}×</Text>
+                  <Pill label={`Reported ${d.count}×`} color={t.orangeSoft} fg={t.orange} />
                 </View>
               ))}
             </Card>
@@ -93,41 +125,42 @@ function Stat({ n, label, color }: { n: number; label: string; color?: string })
   );
 }
 
-function Bars({ title, rows, color }: { title: string; rows: [string, number][]; color: string }) {
+function Rank({ rank, label, n, max, color }: { rank: number; label: string; n: number; max: number; color: string }) {
   const t = useTheme();
-  if (!rows.length) return null;
-  const max = Math.max(1, ...rows.map((r) => r[1]));
   return (
-    <Card>
-      <Eyebrow>{title}</Eyebrow>
-      {rows.map(([label, n], i) => (
-        <View key={label} style={{ gap: 6 }} accessible accessibilityLabel={`${i + 1}. ${label}: ${n} reports`}>
-          <View style={s.barHead}>
-            <Text style={[s.barLabel, { color: t.text }]}>{i + 1}. {label}</Text>
-            <Text style={[s.count, { color: t.text }]}>{n}</Text>
-          </View>
-          <View style={[s.track, { backgroundColor: t.border }]}>
-            <View style={[s.fill, { backgroundColor: color, width: `${(n / max) * 100}%` }]} />
-          </View>
-        </View>
-      ))}
-    </Card>
+    <View style={[s.rank, { backgroundColor: t.card, borderColor: t.border }]} accessible accessibilityLabel={`${rank}. ${label}: ${n} reports`}>
+      <View style={s.rankHead}>
+        <View style={[s.dot, { backgroundColor: color }]} />
+        <Text style={[s.rankLabel, { color: t.text }]}>{label}</Text>
+        <Text style={[s.num, { color }]}>{n}</Text>
+      </View>
+      <View style={[s.track, { backgroundColor: t.border }]}>
+        <View style={[s.fill, { backgroundColor: color, width: `${(n / Math.max(1, max)) * 100}%` }]} />
+      </View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
+  header: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  stat: { flexGrow: 1, flexBasis: 96, borderWidth: 1, borderRadius: 20, padding: 14, gap: 2 },
-  statN: { fontSize: 34, fontWeight: '900' },
-  statLabel: { fontSize: 16, lineHeight: 21 },
+  stat: { flexGrow: 1, flexBasis: 96, borderWidth: 1, borderRadius: 22, padding: 14, gap: 2 },
+  statN: { fontFamily: FONT.display, fontSize: 36, fontWeight: '700' },
+  statLabel: { fontFamily: FONT.body, fontSize: 16, lineHeight: 21 },
   trend: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderRadius: 24, padding: 16 },
-  trendIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  trendText: { fontSize: 19, lineHeight: 26, fontWeight: '700' },
-  barHead: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  barLabel: { fontSize: 19, fontWeight: '700', flexShrink: 1 },
-  count: { fontSize: 19, fontWeight: '800' },
-  track: { height: 12, borderRadius: 6, overflow: 'hidden' },
-  fill: { height: 12, borderRadius: 6 },
-  domainRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, borderTopWidth: 1, paddingTop: 8 },
-  domain: { fontSize: 18, fontFamily: 'monospace', flex: 1 },
+  trendIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  trendText: { fontFamily: FONT.body, fontSize: 19, lineHeight: 26, fontWeight: '600' },
+  rank: { borderWidth: 1, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 14, gap: 10 },
+  rankHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rankLabel: { fontFamily: FONT.body, fontSize: 19, fontWeight: '600', flex: 1 },
+  dot: { width: 14, height: 14, borderRadius: 7 },
+  num: { fontFamily: FONT.display, fontSize: 20, fontWeight: '700' },
+  track: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  fill: { height: 8, borderRadius: 4 },
+  chart: { height: 72, flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginVertical: 4 },
+  col: { flex: 1, borderRadius: 6, minHeight: 8 },
+  distRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 40 },
+  distLabel: { fontFamily: FONT.body, fontSize: 18, flex: 1 },
+  domainRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, minHeight: 48, borderTopWidth: 1, paddingTop: 10 },
+  domain: { fontFamily: FONT.mono, fontSize: 17, flex: 1, minWidth: 160 },
 });

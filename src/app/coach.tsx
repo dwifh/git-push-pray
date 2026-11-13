@@ -1,16 +1,22 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ContactSettings } from '@/components/ContactSettings';
 import { HangUp } from '@/components/HangUp';
-import { useTheme } from '@/components/theme';
-import { Body, Button, Card, ErrorText, Eyebrow, Field, Screen, Title, type IconName } from '@/components/ui';
+import { FONT, useTheme } from '@/components/theme';
+import { Avatar, Body, Button, Card, ErrorText, Eyebrow, Field, Orb, Pill, Screen, Title, type IconName } from '@/components/ui';
 import { api } from '@/shared/api';
 import { QUESTIONS, coachScore, isHangUp, topFlag, type Answer, type Answers } from '@/shared/coach';
 import { getContact } from '@/shared/contact';
 import type { CoachResponse } from '@/shared/types';
 
 type Step = 'intro' | number | 'done';
+
+const noSubscribe = () => () => {};
+const greet = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+};
 
 export default function Coach() {
   const t = useTheme();
@@ -20,13 +26,15 @@ export default function Coach() {
   const [settings, setSettings] = useState(false);
   const [said, setSaid] = useState('');
   const [check, setCheck] = useState<'idle' | 'checking' | 'none' | { error: string }>('idle');
+  // The server renders "Hello"; the phone's own clock picks the greeting (no hydration mismatch).
+  const greeting = useSyncExternalStore(noSubscribe, greet, () => 'Hello');
 
   const restart = () => { setStep('intro'); setAnswers({}); setServerScore(undefined); setSaid(''); setCheck('idle'); };
 
   if (settings) return <ContactSettings onDone={() => setSettings(false)} />;
   // Scored on-device after every tap: the warning shows the moment the cutoff is reached (PLAN §4 short-circuit).
   if (isHangUp(coachScore(answers, serverScore))) {
-    return <HangUp flag={topFlag(answers)} onSettings={() => setSettings(true)} onRestart={restart} />;
+    return <HangUp answers={answers} flag={topFlag(answers)} onSettings={() => setSettings(true)} onRestart={restart} />;
   }
 
   if (typeof step === 'number') {
@@ -38,13 +46,16 @@ export default function Coach() {
     return (
       <Screen>
         <View style={s.row}>
-          <Eyebrow>Question {step + 1} of {QUESTIONS.length}</Eyebrow>
-          <Pressable accessibilityRole="button" onPress={restart} style={s.link}>
-            <Text style={[s.linkText, { color: t.muted }]}>Start over</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Start over" onPress={restart} style={[s.iconBtn, { backgroundColor: t.card, borderColor: t.border }]}>
+            <Ionicons name="close" size={28} color={t.text} />
           </Pressable>
+          <Text style={[s.stepTitle, { color: t.text }]}>Question {step + 1} of {QUESTIONS.length}</Text>
+          <View style={{ width: 52 }} />
         </View>
-        <View style={[s.track, { backgroundColor: t.border }]}>
-          <View style={[s.fill, { backgroundColor: t.teal, width: `${((step + 1) / QUESTIONS.length) * 100}%` }]} />
+        <View style={s.segments} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {QUESTIONS.map((x, i) => (
+            <View key={x.id} style={[s.segment, { backgroundColor: i <= step ? t.teal : t.border }]} />
+          ))}
         </View>
         <Card>
           <Text accessibilityRole="header" style={[s.question, { color: t.text }]}>{q.text}</Text>
@@ -69,7 +80,7 @@ export default function Coach() {
     };
     return (
       <Screen>
-        <Eyebrow color={t.teal}>Your answers</Eyebrow>
+        <Pill label="No strong signs" icon="shield-checkmark" color={t.tealSoft} fg={t.teal} />
         <Title>No strong scam signs from your answers</Title>
         <Card>
           <Body color={t.text}>Stay careful. Never share an OTP, PIN or password. If you feel unsure, hang up and call back on the number printed on your card or bill.</Body>
@@ -86,24 +97,23 @@ export default function Coach() {
   const { to, firstName } = getContact();
   return (
     <Screen>
-      <View style={{ gap: 6 }}>
-        <Eyebrow>Call Coach</Eyebrow>
-        <Title>{firstName ? `${firstName}, on a call right now?` : 'On a call right now?'}</Title>
+      <View style={{ gap: 4 }}>
+        <Text style={[s.greeting, { color: t.muted }]}>{firstName ? `${greeting}, ${firstName}` : greeting}</Text>
+        <Title>On a call right now?</Title>
       </View>
-      <View style={s.orbWrap}>
-        <View style={[s.orbOuter, { borderColor: t.border }]}>
-          <View style={[s.orbRing, { borderColor: t.teal }]}>
-            <View style={[s.orb, { backgroundColor: t.teal, shadowColor: t.teal }]}>
-              <Ionicons name="shield-checkmark" size={76} color={t.onTeal} />
-            </View>
-          </View>
-        </View>
-      </View>
+      <Orb color={t.teal} chips={['OTP & PIN', 'Money', 'Fake Police', 'Family']}>
+        <Ionicons name="shield-checkmark" size={72} color={t.onTeal} />
+      </Orb>
       <Body>Answer a few yes or no questions. We will tell you if it looks like a scam. Works without internet.</Body>
-      <Button label="Start" icon="arrow-forward" onPress={() => setStep(0)} />
+      <Button label="Start the check" icon="arrow-forward" onPress={() => setStep(0)} />
+
+      <Eyebrow>Family circle</Eyebrow>
       <Pressable accessibilityRole="button" onPress={() => setSettings(true)} style={[s.contact, { backgroundColor: t.card, borderColor: t.border }]}>
-        <View style={[s.contactIcon, { backgroundColor: t.tealSoft }]}>
-          <Ionicons name="people" size={26} color={t.teal} />
+        <View style={s.avatars}>
+          <Avatar label="You" color="#3B4A86" size={52} />
+          <View style={{ marginLeft: -6 }}>
+            <Avatar label={to ? '✓' : '?'} color={to ? t.tealDeep : t.purple} size={52} />
+          </View>
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[s.contactTitle, { color: t.text }]}>{to ? 'Family contact saved' : 'Add a family contact'}</Text>
@@ -123,27 +133,24 @@ function AnswerButton({ icon, label, color, onPress }: { icon: IconName; label: 
       accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => [s.answer, { backgroundColor: t.card, borderColor: color, opacity: pressed ? 0.8 : 1 }]}>
-      <Ionicons name={icon} size={36} color={color} />
+      <Ionicons name={icon} size={38} color={color} />
       <Text style={[s.answerText, { color: t.text }]}>{label}</Text>
     </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
-  link: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 8 },
-  linkText: { fontSize: 17, fontWeight: '700', textDecorationLine: 'underline' },
-  track: { height: 10, borderRadius: 5, overflow: 'hidden' },
-  fill: { height: 10, borderRadius: 5 },
-  question: { fontSize: 28, lineHeight: 36, fontWeight: '800' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  iconBtn: { width: 52, height: 52, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  stepTitle: { fontFamily: FONT.display, fontSize: 20, fontWeight: '700', flex: 1, textAlign: 'center' },
+  segments: { flexDirection: 'row', gap: 6 },
+  segment: { flex: 1, height: 8, borderRadius: 4 },
+  question: { fontFamily: FONT.display, fontSize: 28, lineHeight: 36, fontWeight: '700' },
   answer: { minHeight: 76, borderRadius: 22, borderWidth: 2.5, flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 22 },
-  answerText: { fontSize: 26, fontWeight: '900', letterSpacing: 1 },
-  orbWrap: { alignItems: 'center', paddingVertical: 4 },
-  orbOuter: { padding: 18, borderRadius: 999, borderWidth: 1 },
-  orbRing: { padding: 16, borderRadius: 999, borderWidth: 1.5, borderStyle: 'dashed' },
-  orb: { width: 140, height: 140, borderRadius: 70, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.45, shadowRadius: 28, shadowOffset: { width: 0, height: 0 } },
-  contact: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderRadius: 20, padding: 14, minHeight: 72 },
-  contactIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  contactTitle: { fontSize: 19, fontWeight: '800' },
-  contactSub: { fontSize: 16, marginTop: 2 },
+  answerText: { fontFamily: FONT.display, fontSize: 26, fontWeight: '700', letterSpacing: 1 },
+  greeting: { fontFamily: FONT.body, fontSize: 18 },
+  contact: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderRadius: 22, padding: 14, minHeight: 76 },
+  avatars: { flexDirection: 'row' },
+  contactTitle: { fontFamily: FONT.display, fontSize: 19, fontWeight: '700' },
+  contactSub: { fontFamily: FONT.body, fontSize: 16, marginTop: 2 },
 });
