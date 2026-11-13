@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendAlert } from '@/shared/alert';
@@ -12,8 +12,16 @@ import type { IconName } from './ui';
 const toYou = (flag: string) => (flag[0].toUpperCase() + flag.slice(1)).replace(/\bthem\b/, 'you');
 
 // Rendered from on-device scoring alone (PLAN §4). Every action below is optional; none gates the warning.
-export function HangUp({ answers, flag, onSettings, onRestart }: { answers: Answers; flag: string; onSettings: () => void; onRestart: () => void }) {
+export function HangUp({ answers, flag, onSettings, onReport, onRestart }: {
+  answers: Answers; flag: string; onSettings: () => void; onReport: () => void; onRestart: () => void;
+}) {
   const { top } = useSafeAreaInsets();
+  // Buzz so the warning is noticed with the phone at the ear. Android browsers only; iPhones ignore it.
+  useEffect(() => {
+    try {
+      globalThis.navigator?.vibrate?.([400, 200, 400]);
+    } catch {}
+  }, []);
   const { to, firstName } = getContact();
   const [alert, setAlert] = useState<'idle' | 'sending' | { sent: boolean; waMe: string }>('idle');
   const signs = QUESTIONS.filter((q) => answers[q.id] === 1).map((q) => toYou(q.flag));
@@ -75,6 +83,7 @@ export function HangUp({ answers, flag, onSettings, onRestart }: { answers: Answ
           <Ionicons name="card" size={26} color={ALARM.text} />
           <Text style={s.signText}>Worried about your bank? Call the number printed on your bank card.</Text>
         </View>
+        <Action icon="megaphone" label="Report this call" onPress={onReport} />
         <Pressable accessibilityRole="button" onPress={onRestart} style={s.restart}>
           <Text style={s.restartText}>Start over</Text>
         </Pressable>
