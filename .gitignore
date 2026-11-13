@@ -42,3 +42,6 @@ example
 # generated native folders
 /ios
 /android
+
+# raw URL lists (~60 MB); derived files are committed (npm run build-url-data)
+data/raw/

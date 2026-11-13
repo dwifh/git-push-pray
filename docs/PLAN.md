@@ -9,7 +9,8 @@ As of 2026-11-13. **Step 0 is done; next is step 1.**
 - All 12 env keys from §9 are set in EAS `production` as **sensitive**. `.env` is complete locally, `HASH_SALT` included (`npm run salt` creates it).
 - WhatsApp templates: drafted in `docs/WHATSAPP-TEMPLATES.md`, not yet approved by Meta. Keep `WHATSAPP_TEMPLATE_MODE=test`.
 - Team split and dataset plan: `docs/TEAM-PLAN.md`.
-- Git: work on local branch `Ayush`, which tracks `origin/features-Ayush`. Never push to `main`; merge through a PR.
+- Git: work on local branch `Ayush`, which tracks `origin/features-Ayush`. Never push to `main`; merge through a PR. (Exception: the calibration commit `8fb70a8` was fast-forwarded to `main` on request; `gh` is not installed here.)
+- Owners: Ayush = Backend 1, Rushil = Backend 2, Jasveer = Frontend 1, Anjali = Frontend 2 (`docs/TEAM-PLAN.md` §1). URL lists checked: eval set `data/eval/domains.jsonl` + `SHARED_HOSTS` rule (§3.2); raw dumps stay out of git.
 - `tsconfig.json` has `allowImportingTsExtensions: true` and `types: ["node"]` (TS 6 no longer auto-loads `@types/*`); `@types/node` is installed. Node 22.20 runs the `*.test.ts` files directly.
 - **Calibrated routing (§3.6), done early as part of step 1**: `calibration`, `verdict`, `scam-signals`, `redact` (pure, tested), `jev.ts`, `claude.ts`, `npm run fetch-data`, `npm run eval`. Dataset: DIFrauD (TEAM-PLAN §5), 360 messages. Fitted on SMS + email dev rows (job ads are out-of-domain: Jev AUC 0.30). Result in `src/lib/calibration.json`: Jev AUC 0.965 (test 0.958), cutoffs 0.30 / 0.72, all 5 signals kept; Claude accuracy 0.94, `HIGH_RISK` precision 0.96 → trusted. Held-out test, models only: 2/60 scams `SAFE` (PLAN cutoffs: 3/60), 18% genuine above `SAFE` (PLAN: 17%). Not yet wired: the pipeline (step 3) must `loadCalibration` it, then re-record with real evidence. Team sign-off needed (it replaces the fixed 0.6 / 0.85). Still to do in step 1: `senderHash`, `extract`, `rules`, `coach`, `email`, `whatsapp`, `rate-limit`.
 
@@ -79,7 +80,7 @@ Screens (`src/app/`, tabs): `index.tsx` Scan, `coach.tsx`, `feed.tsx`, `email.ts
 
 ### 3.2 Rules (`rules.ts`) — the floor
 `HIGH_RISK` if any:
-- VirusTotal `last_analysis_stats.malicious >= 2`, or URLhaus lists the host.
+- VirusTotal `last_analysis_stats.malicious >= 2`, or URLhaus lists the host — unless the host is in `SHARED_HOSTS`, where either hit only counts as `SUSPICIOUS` ("this site hosts files for anyone; one of them was reported as malware").
 - A domain is a lookalike of an allowlisted brand and is not allowlisted: a brand token (or its homoglyph form) equals a **whole** dot- or hyphen-separated part of the host, never a substring (`mcb-secure.com`, `mcb.mu.evil.com`, `rnauritiuspost.com` → `mauritiuspost.com` match; `cebupacific.com`, `smcb.org` do not), or the host has an `xn--` label.
 - Asks for a credential (OTP / PIN / password / card / CVV) **and** contains a link or a phone number to call back.
 - ≥3 distinct reporters on the domain (allowlisted domains and URL shorteners excluded).
@@ -92,6 +93,8 @@ Screens (`src/app/`, tabs): `index.tsx` Scan, `coach.tsx`, `feed.tsx`, `email.ts
 - 1–2 community reporters on the domain (allowlisted domains and URL shorteners excluded).
 
 Otherwise `SAFE`. Each triggered rule adds one plain-English flag.
+
+`SHARED_HOSTS` (in `extract.ts`, exact host match): `github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `gitlab.com`, `bitbucket.org`, `discord.com`, `cdn.discordapp.com`, `drive.google.com`, `docs.google.com`, `www.dropbox.com`, `dl.dropboxusercontent.com`, `pastebin.com`, `linktr.ee`, `pixeldrain.com`, `www.mediafire.com`, `res.cloudinary.com`, `web.archive.org`. These are popular platforms that also appear in URLhaus (checked against Tranco top-10k on 2026-11-13). Like shorteners, community reports on them never count. Per-tenant subdomains (`x.workers.dev`, `x.pages.dev`, `x.r2.dev`, `x.vercel.app`, `x.github.io`) are **not** shared: the attacker owns that host, so a hit there stays `HIGH_RISK`.
 
 ### 3.3 Jev (Tier 1)
 One Decisions call. Scam `SIGNALS` (noisy-OR weights):

@@ -44,7 +44,8 @@
     "typecheck": "expo customize tsconfig.json && tsc --noEmit",
     "test": "node src/lib/scam-signals.test.ts && node src/lib/calibration.test.ts && node src/lib/verdict.test.ts && node src/lib/redact.test.ts",
     "fetch-data": "node scripts/fetch-datasets.mjs",
-    "eval": "node --env-file=.env scripts/eval.ts"
+    "eval": "node --env-file=.env scripts/eval.ts",
+    "build-url-data": "node scripts/build-url-data.mjs"
   },
   "private": true
 }
