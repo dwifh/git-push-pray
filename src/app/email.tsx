@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { post } from '@/shared/api';
-import { AlertOverlay, alertPalette, Btn, Flags, Pill, styles, ThemeToggle } from '@/components/ui';
+import { AlertOverlay, alertPalette, Btn, Flags, Pill, styles, ThemeToggle } from '@/components/scan-ui';
 import { FONT_DISPLAY, useTheme, verdictStyle, type Theme } from '@/shared/theme';
 import { LIMITS, type EmailResult, type Importance } from '@/shared/types';
 

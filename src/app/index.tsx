@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { AlertOverlay, alertPalette, Btn, Flags, Pill, styles, ThemeToggle } from '@/components/ui';
+import { AlertOverlay, alertPalette, Btn, Flags, Pill, styles, ThemeToggle } from '@/components/scan-ui';
 import { sendAlert } from '@/shared/alert';
 import { post } from '@/shared/api';
 import { FONT_DISPLAY, useTheme, verdictStyle, type Theme } from '@/shared/theme';

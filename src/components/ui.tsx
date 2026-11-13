@@ -1,91 +1,207 @@
-// Shared building blocks for the Scan and Email screens (same look, one place).
-import type { ReactNode } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { FONT_DISPLAY, gridBackground, toggleTheme, type Theme } from '@/shared/theme';
-import type { Verdict } from '@/shared/types';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import type { ComponentProps, ReactNode } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FONT, css, glow, useTheme, useThemeMode } from './theme';
 
-// Full-screen warning palettes: red for HIGH_RISK (same as Coach "HANG UP NOW"), yellow for SUSPICIOUS.
-// fg = text and outlines; solid/onSolid = the filled button; pill/pillText = the top badge.
-const RED = { bg: '#8F1D12', top: '#C2452A', fg: '#FFFFFF', solid: '#FFFFFF', onSolid: '#8F1D12', pill: '#FF7A45', pillText: '#3B0A05', dim: 'rgba(255,255,255,0.12)', line: 'rgba(255,255,255,0.35)' };
-const YELLOW: typeof RED = { bg: '#F2B705', top: '#FFD84D', fg: '#2A1A00', solid: '#2A1A00', onSolid: '#FFD84D', pill: '#2A1A00', pillText: '#FFD84D', dim: 'rgba(0,0,0,0.08)', line: 'rgba(0,0,0,0.3)' };
-export type AlertPalette = typeof RED;
-export const alertPalette = (v: Verdict) => (v === 'HIGH_RISK' ? RED : YELLOW);
+export type IconName = ComponentProps<typeof Ionicons>['name'];
+type Tone = 'teal' | 'orange';
 
-// Modal, so the warning also covers the tab bar.
-export function AlertOverlay({ p, onClose, children }: { p: AlertPalette; onClose: () => void; children: ReactNode }) {
-  const web = Platform.OS === 'web' ? ({ backgroundImage: `radial-gradient(ellipse at top, ${p.top}, ${p.bg} 55%)` } as object) : {};
+// Grid background + soft glow at the top (mockup look). Scrolls on short phones, centres on tablets, clears notches.
+export function Screen({ children, tone = 'teal' }: { children: ReactNode; tone?: Tone }) {
+  const t = useTheme();
+  const g = tone === 'teal' ? t.teal : t.orange;
+  const bg = css({
+    backgroundImage: `radial-gradient(ellipse 90% 40% at 50% 0%, ${g}22, transparent 70%), linear-gradient(${t.grid} 1px, transparent 1px), linear-gradient(90deg, ${t.grid} 1px, transparent 1px)`,
+    backgroundSize: '100% 100%, 28px 28px, 28px 28px',
+  });
+  const { top } = useSafeAreaInsets();
   return (
-    <Modal visible animationType="fade" onRequestClose={onClose}>
-      <ScrollView style={[{ flex: 1, backgroundColor: p.bg }, web]} contentContainerStyle={{ padding: 24, gap: 16, alignItems: 'center', maxWidth: 560, width: '100%', alignSelf: 'center' }} accessibilityViewIsModal>
-        {children}
-      </ScrollView>
-    </Modal>
+    <ScrollView style={[{ flex: 1, backgroundColor: t.bg }, bg]} contentContainerStyle={[s.screen, { paddingTop: top + 28 }]} keyboardShouldPersistTaps="handled">
+      {children}
+    </ScrollView>
   );
 }
 
-export function ThemeToggle({ t }: { t: Theme }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={t.scheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onPress={toggleTheme} style={styles(t).iconBtn}>
-      <Text style={{ fontSize: 22, color: t.scheme === 'dark' ? t.amber : t.text }}>{t.scheme === 'dark' ? '☀' : '☾'}</Text>
-    </Pressable>
-  );
-}
-
-// Flags are model text: plain <Text>, never links.
-export function Flags({ t, flags }: { t: Theme; flags: string[] }) {
-  const s = styles(t);
-  return flags.map((f, i) => (
-    <View key={i} style={s.flag}>
-      <Text style={[s.flagNum, { color: t.orange }]}>{i + 1}</Text>
-      <Text style={[s.body, { flex: 1 }]}>{f}</Text>
-    </View>
-  ));
-}
-
-export function Pill({ t, color, text }: { t: Theme; color: string; text: string }) {
-  return (
-    <View style={{ borderWidth: 1.5, borderColor: color, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 }}>
-      <Text style={{ color, fontWeight: '800', fontSize: 15, letterSpacing: 0.5 }}>{text.toUpperCase()}</Text>
-    </View>
-  );
-}
-
-export function Btn({ t, label, onPress, primary, disabled }: { t: Theme; label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
+// Sun = light mode, moon = dark mode; the button shows the mode a tap switches to (as in the mockups).
+export function ThemeToggle() {
+  const t = useTheme();
+  const [mode, toggle] = useThemeMode();
+  const toLight = mode === 'dark';
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={{
-        minHeight: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18,
-        backgroundColor: primary ? t.teal : t.card, borderWidth: primary ? 0 : 1, borderColor: t.border, opacity: disabled ? 0.45 : 1,
-        ...(primary && Platform.OS === 'web'
-          ? { backgroundImage: `linear-gradient(90deg, ${t.teal}, ${t.tealDeep})`, boxShadow: `0 6px 24px ${t.teal}40` }
-          : {}),
-      }}>
-      <Text style={{ color: primary ? t.onTeal : t.text, fontSize: 19, fontWeight: '700', fontFamily: FONT_DISPLAY }}>{label}</Text>
+      accessibilityLabel={toLight ? 'Switch to light mode' : 'Switch to dark mode'}
+      onPress={toggle}
+      style={({ pressed }) => [s.toggle, { backgroundColor: t.card, borderColor: t.border, opacity: pressed ? 0.8 : 1 }]}>
+      <Ionicons name={toLight ? 'sunny' : 'moon'} size={26} color={toLight ? '#FBBF24' : t.text} />
     </Pressable>
   );
 }
 
-export const styles = (t: Theme) =>
-  StyleSheet.create({
-    page: { flex: 1, backgroundColor: t.bg, ...gridBackground(t) },
-    content: { paddingHorizontal: 20, paddingTop: 36, paddingBottom: 40, gap: 14, maxWidth: 560, width: '100%', alignSelf: 'center' },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    greet: { color: t.muted, fontSize: 18 },
-    iconBtn: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: t.card, borderWidth: 1, borderColor: t.border },
-    section: { color: t.muted, fontWeight: '800', letterSpacing: 2, fontSize: 14, marginTop: 6 },
-    eyebrow: { color: t.orange, fontWeight: '800', letterSpacing: 2, fontSize: 14 },
-    title: { color: t.text, fontSize: 30, fontWeight: '700', fontFamily: FONT_DISPLAY },
-    h2: { color: t.text, fontSize: 21, fontWeight: '700', fontFamily: FONT_DISPLAY },
-    body: { color: t.text, fontSize: 18, lineHeight: 26 },
-    muted: { color: t.muted, fontSize: 17, lineHeight: 24 },
-    small: { fontSize: 15 },
-    card: { backgroundColor: t.card, borderColor: t.border, borderWidth: 1, borderRadius: 22, padding: 18, gap: 10 },
-    center: { alignItems: 'center' },
-    row: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-    input: { color: t.text, fontSize: 16, minHeight: 160, fontFamily: Platform.select({ web: 'ui-monospace, Menlo, Consolas, monospace', default: 'monospace' }), textAlignVertical: 'top' },
-    flag: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', backgroundColor: t.card, borderColor: t.border, borderWidth: 1, borderRadius: 14, padding: 12 },
-    flagNum: { fontSize: 20, fontWeight: '800' },
-  });
+export function Eyebrow({ children, color }: { children: ReactNode; color?: string }) {
+  const t = useTheme();
+  return <Text style={[s.eyebrow, { color: color ?? t.muted }]}>{children}</Text>;
+}
+
+export function Title({ children, color }: { children: ReactNode; color?: string }) {
+  const t = useTheme();
+  return <Text accessibilityRole="header" style={[s.title, { color: color ?? t.text }]}>{children}</Text>;
+}
+
+export function Body({ children, color }: { children: ReactNode; color?: string }) {
+  const t = useTheme();
+  return <Text style={[s.body, { color: color ?? t.muted }]}>{children}</Text>;
+}
+
+export function Card({ children, accent, bg }: { children: ReactNode; accent?: string; bg?: string }) {
+  const t = useTheme();
+  return <View style={[s.card, { backgroundColor: bg ?? t.card, borderColor: accent ?? t.border }]}>{children}</View>;
+}
+
+type Kind = 'primary' | 'danger' | 'ghost';
+export function Button({ label, onPress, kind = 'primary', icon, disabled }: {
+  label: string; onPress: () => void; kind?: Kind; icon?: IconName; disabled?: boolean;
+}) {
+  const t = useTheme();
+  const c = {
+    primary: { bg: t.teal, to: t.tealDeep, fg: t.onTeal, border: t.teal },
+    danger: { bg: t.orange, to: t.orangeDeep, fg: t.onOrange, border: t.orange },
+    ghost: { bg: t.card, to: t.card, fg: t.text, border: t.border },
+  }[kind];
+  const fx = kind === 'ghost' ? null : [css({ backgroundImage: `linear-gradient(160deg, ${c.bg}, ${c.to})` }), !disabled && glow(c.bg, 24)];
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [s.button, { backgroundColor: c.bg, borderColor: c.border, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 }, fx]}>
+      {icon && <Ionicons name={icon} size={26} color={c.fg} />}
+      <Text style={[s.buttonText, { color: c.fg }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+// Small rounded badge: LIVE, HIGH RISK, REPORTED 3×…
+export function Pill({ label, color, fg, icon }: { label: string; color: string; fg: string; icon?: IconName }) {
+  return (
+    <View style={[s.pill, { backgroundColor: color }]}>
+      {icon && <Ionicons name={icon} size={16} color={fg} />}
+      <Text style={[s.pillText, { color: fg }]}>{label}</Text>
+    </View>
+  );
+}
+
+export function Avatar({ label, color, size = 56 }: { label: string; color: string; size?: number }) {
+  const t = useTheme();
+  return (
+    <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: color, borderColor: t.bg }]}>
+      <Text style={[s.avatarText, { fontSize: size * 0.34 }]} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
+// The glowing hero circle inside concentric rings, with decorative chips around it (hidden from screen readers).
+export function Orb({ color, children, chips = [], size = 140 }: { color: string; children: ReactNode; chips?: string[]; size?: number }) {
+  const t = useTheme();
+  const spots = [{ top: 8, left: 0 }, { top: 36, right: 0 }, { bottom: 36, left: 4 }, { bottom: 8, right: 8 }];
+  return (
+    <View style={s.orbWrap}>
+      <View style={[s.orbOuter, { borderColor: t.border }]}>
+        <View style={[s.orbRing, { borderColor: color }]}>
+          <View style={[s.orb, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }, css({ backgroundImage: `radial-gradient(circle at 35% 30%, #ffffff55, transparent 60%)` }), glow(color, 48)]}>
+            {children}
+          </View>
+        </View>
+      </View>
+      {chips.slice(0, 4).map((c, i) => (
+        <View key={c} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={[s.orbChip, spots[i], { backgroundColor: t.card, borderColor: t.border }]}>
+          <Text style={[s.orbChipText, { color: t.teal }]}>{c}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// "Recent checks" style row: dot · text · coloured status word on the right.
+export function Row({ dot, label, status, statusColor }: { dot: string; label: string; status?: string; statusColor?: string }) {
+  const t = useTheme();
+  return (
+    <View style={[s.row, { backgroundColor: t.card, borderColor: t.border }]}>
+      <View style={[s.dot, { backgroundColor: dot }]} />
+      <Text style={[s.rowText, { color: t.text }]}>{label}</Text>
+      {!!status && <Text style={[s.rowStatus, { color: statusColor ?? t.muted }]}>{status}</Text>}
+    </View>
+  );
+}
+
+export function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[s.chip, { backgroundColor: selected ? t.teal : t.card, borderColor: selected ? t.teal : t.border }]}>
+      {selected && <Ionicons name="checkmark" size={20} color={t.onTeal} />}
+      <Text style={[s.chipText, { color: selected ? t.onTeal : t.text }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function Field({ label, ...props }: TextInputProps & { label: string }) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={[s.label, { color: t.text }]}>{label}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        placeholderTextColor={t.muted}
+        {...props}
+        style={[s.input, { color: t.text, backgroundColor: t.card, borderColor: t.border }, props.multiline && { minHeight: 110 }]}
+      />
+    </View>
+  );
+}
+
+export function ErrorText({ children }: { children: ReactNode }) {
+  const t = useTheme();
+  return (
+    <View accessibilityRole="alert" style={s.errorRow}>
+      <Ionicons name="alert-circle" size={24} color={t.orange} />
+      <Text style={[s.errorText, { color: t.orange }]}>{children}</Text>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  screen: { paddingHorizontal: 16, paddingBottom: 48, gap: 18, width: '100%', maxWidth: 560, alignSelf: 'center', flexGrow: 1 },
+  toggle: { width: 52, height: 52, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  eyebrow: { fontFamily: FONT.body, fontSize: 15, fontWeight: '800', letterSpacing: 1.8, textTransform: 'uppercase' },
+  title: { fontFamily: FONT.display, fontSize: 34, lineHeight: 40, fontWeight: '700', letterSpacing: -0.6 },
+  body: { fontFamily: FONT.body, fontSize: 19, lineHeight: 27 },
+  card: { borderWidth: 1, borderRadius: 24, padding: 18, gap: 12 },
+  button: { minHeight: 64, borderRadius: 22, borderWidth: 1.5, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  buttonText: { fontFamily: FONT.display, fontSize: 21, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
+  pillText: { fontFamily: FONT.body, fontSize: 15, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
+  avatar: { alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
+  avatarText: { fontFamily: FONT.display, color: '#FFFFFF', fontWeight: '700' },
+  orbWrap: { alignSelf: 'center', width: '100%', maxWidth: 330, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  orbOuter: { padding: 18, borderRadius: 999, borderWidth: 1 },
+  orbRing: { padding: 16, borderRadius: 999, borderWidth: 1.5, borderStyle: 'dashed' },
+  orb: { alignItems: 'center', justifyContent: 'center' },
+  orbChip: { position: 'absolute', borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7 },
+  orbChipText: { fontFamily: FONT.body, fontSize: 16, fontWeight: '700' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderRadius: 22, paddingHorizontal: 18, minHeight: 60, paddingVertical: 10 },
+  dot: { width: 14, height: 14, borderRadius: 7 },
+  rowText: { fontFamily: FONT.body, fontSize: 19, flex: 1 },
+  rowStatus: { fontFamily: FONT.body, fontSize: 16, fontWeight: '800', letterSpacing: 0.4 },
+  chip: { minHeight: 52, borderRadius: 16, borderWidth: 1.5, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chipText: { fontFamily: FONT.body, fontSize: 18, fontWeight: '700' },
+  label: { fontFamily: FONT.body, fontSize: 19, fontWeight: '800' },
+  input: { fontFamily: FONT.body, minHeight: 56, borderWidth: 1.5, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, fontSize: 19, textAlignVertical: 'top' },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  errorText: { fontFamily: FONT.body, fontSize: 18, fontWeight: '700', flex: 1 },
+});
