@@ -42,7 +42,7 @@
     "lint": "expo lint",
     "salt": "node scripts/gen-salt.mjs",
     "typecheck": "expo customize tsconfig.json && tsc --noEmit",
-    "test": "node src/lib/scam-signals.test.ts && node src/lib/calibration.test.ts && node src/lib/verdict.test.ts && node src/lib/redact.test.ts && node src/shared/messages.test.ts && node src/lib/whatsapp.test.ts",
+    "test": "node src/lib/scam-signals.test.ts && node src/lib/calibration.test.ts && node src/lib/verdict.test.ts && node src/lib/redact.test.ts && node src/shared/messages.test.ts && node src/lib/whatsapp.test.ts && node src/lib/rate-limit.test.ts",
     "fetch-data": "node scripts/fetch-datasets.mjs",
     "eval": "node --env-file=.env scripts/eval.ts",
     "build-url-data": "node scripts/build-url-data.mjs"
