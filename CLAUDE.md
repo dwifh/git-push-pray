@@ -26,7 +26,9 @@ Shared by `/api/scan` and `/api/email`. Order is fixed:
 3. **Evidence** in parallel, each with a 3s timeout and an `unknown` result on failure: VirusTotal domain lookup, URLhaus host lookup, community reports for the domain, RAG top matches.
 4. **Tier 1 — Jev** (`typesafe/jev-1.13`, OpenRouter Decisions API): scam-signal probabilities → noisy-OR score; clarifier (`isFragment`, `missingField: sender | link | full_text | none`). Clarify only when the rule floor is below `HIGH_RISK`; a clear scam is never stalled by a question.
 5. **Tier 3 — Claude** (`~anthropic/claude-sonnet-latest`): one call, strict JSON schema, **no tools**, untrusted text passed as data.
-6. **Verdict = max(rule floor, Jev level, Claude verdict)**. Every input can only raise risk. Claude/Jev failure → verdict from what succeeded.
+6. **Verdict = max(rule floor, `jevLevel`, `claudeLevel`)** (`src/lib/verdict.ts`). Every input can only raise risk. Claude/Jev failure → verdict from what succeeded.
+
+**Calibrated routing (PLAN §3.6).** Jev cutoffs and signal weights, and whether a Claude `HIGH_RISK` counts as `HIGH_RISK` or only `SUSPICIOUS`, come from measured ROC-AUC and precision on a labelled dataset (`src/lib/calibration.json`, loaded through `loadCalibration`), never from the model's own word. A model can be demoted, never silenced: calibration must never let a model's `SUSPICIOUS` or `HIGH_RISK` end up `SAFE`. Re-run `npm run eval -- record` and `-- calibrate` whenever the Jev questions, the Claude prompt or model, or the dataset changes.
 
 There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety agent are removed.
 
@@ -34,7 +36,8 @@ There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety
 - **Monotonic verdict**: untrusted content can raise risk, never lower it. Code owns the floor; models only add.
 - **Redact before egress**: no raw message, email body, phone number, card/account number, NIC or OTP reaches an LLM, a log, or the Feed. Raw text is never logged.
 - **Never fetch untrusted URLs** (no previews, no redirect expansion, no HEAD). Threat intel is looked up by domain only; full URLs are never submitted to VirusTotal.
-- **Allowlisted official domains** and known URL shorteners can never be flagged by community reports.
+- **Allowlisted official domains**, known URL shorteners and `SHARED_HOSTS` (github.com, drive.google.com, …; PLAN §3.2) can never be flagged by community reports. A threat-intel hit on a `SHARED_HOSTS` host caps at `SUSPICIOUS`; per-tenant subdomains (`x.workers.dev`, `x.pages.dev`) are not shared.
+- **No raw datasets or malware lists in git.** Raw downloads live in `data/raw/` (gitignored); commit only small derived files. Malicious domains in committed files are defanged (`evil[.]com`), because Windows Defender quarantines plain malware host lists.
 - Secrets (`OPENROUTER_API_KEY`, `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `TURSO_*`, `HASH_SALT`) live only in `src/lib/` (server-only) and EAS env; nothing secret in `EXPO_PUBLIC_*`. Client-safe shared logic lives in `src/shared/`.
 - Every API route (except the static `/api/health` liveness probe, which has no input): rate limit (`ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE`, `ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE`) → validate input (type, length) → try/catch with a friendly error.
 - WhatsApp sends: only approved templates by name from a server-side allowlist; every Graph API call carries `appsecret_proof` (HMAC-SHA256 of `WHATSAPP_TOKEN` keyed with `WHATSAPP_APP_SECRET`); template variables are redacted, single-line, length-capped and **never contain a URL** (we never spread a scam link). Strict per-IP rate limit on `/api/alert`.
@@ -54,7 +57,9 @@ There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety
 
 ## Workflow
 - Docs: `docs/PLAN.md` (§0 status, decisions, build order), `docs/PORTED-CODE.md`, `docs/TEAM-PLAN.md` (who owns what, API contract, datasets), `docs/WHATSAPP-TEMPLATES.md`.
+- Owners (TEAM-PLAN §1): Ayush = Backend 1 (pipeline), Rushil = Backend 2 (data + integrations), Jasveer = Frontend 1 (Scan + Email), Anjali = Frontend 2 (Coach + Feed).
+- Data: `npm run fetch-data` (DIFrauD → `data/eval/messages.jsonl`), `npm run build-url-data` (`data/raw/` → `data/eval/domains.jsonl`), `npm run eval -- record [limit]` (paid: Jev + Claude) and `-- calibrate` (offline). Eval messages need `label` (`scam` / `genuine`) and `split` (`dev` / `test`).
 - Work one PLAN §10 step at a time. At the end of each step, show that its *Done when* criterion is met, update PLAN §0, and wait for the go-ahead.
-- Ponytail (minimal diffs). `/tdd` for every pure module in `src/lib/` and `src/shared/`. `npm test` runs the node-assert self-checks. `/ponytail-review` before the demo.
+- Ponytail (minimal diffs). `/tdd` for every pure module in `src/lib/` and `src/shared/`. `npm test` runs the node-assert self-checks (append each new `*.test.ts` to the `test` script). `/ponytail-review` before the demo.
 - Edit `data/knowledge-base.json`, then `npm run seed` to regenerate `data/knowledge-vectors.json`.
 - Knowledge-base content and allowlisted domains are unverified until a teammate checks them against official sources; never present them as official.

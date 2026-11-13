@@ -17,7 +17,12 @@ Never push directly to `main`.
 ```bash
 npm run lint
 npm run typecheck
+npm test
 ```
+
+## Data
+
+Never commit raw datasets or malware lists. Put downloads in `data/raw/` (git-ignored) and commit only small derived files (`data/eval/*.jsonl`). Write malicious domains defanged (`evil[.]com`); Windows Defender quarantines plain malware host lists. If you change the Jev questions, the Claude prompt or the eval set, re-run `npm run eval -- record` and `-- calibrate` and commit the new `src/lib/calibration.json`.
 
 ## Adding packages
 
@@ -26,5 +31,5 @@ Commit the updated `package-lock.json`.
 
 ## Secrets
 
-Never commit API keys. Put them in `.env.local` (git-ignored) using the `EXPO_PUBLIC_` prefix
-only for values that are safe to ship in the app bundle.
+Never commit API keys. Put them in `.env` (git-ignored; key names in `docs/PLAN.md` §9). Use the `EXPO_PUBLIC_` prefix
+only for values that are safe to ship in the app bundle. Server secrets are read only in `src/lib/`.

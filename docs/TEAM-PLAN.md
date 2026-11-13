@@ -22,7 +22,7 @@ Updated 2026-11-13 (evening). Step 0 is live, and calibrated model routing (PLAN
 1. **Calibrated Jev cutoffs** replace the fixed 0.6 / 0.85: they are now 0.30 / 0.72 (PLAN §3.6, `src/lib/calibration.json`). Claude `HIGH_RISK` stays fully trusted (96% precise). Re-check after the pipeline lands.
 2. **`SHARED_HOSTS`** (PLAN §3.2): a URLhaus or VirusTotal hit on a shared platform counts as `SUSPICIOUS`, never `HIGH_RISK`, and community reports never count there.
 
-Work on one branch per step, open a PR to `main` and let CI (lint + typecheck) pass before merging. Run `npm test` before every PR.
+Work on one branch per step, open a PR to `main` and let CI (lint + typecheck + `npm test`) pass before merging. Run `npm test` before every PR.
 
 ## 3. API contract (frontend ↔ backend)
 
@@ -70,7 +70,7 @@ Nothing here trains a model. The data is an **evaluation set**: it checks the re
 |---|---|---|---|---|
 | **1 — must have** | **Mauritius test set, hand-built** | Every rule, redaction, lookalikes, the demo script, the KB | 80 messages: 50 scams covering the 10 patterns in PLAN §8, 30 genuine (CEB outage notice, bank transaction SMS, Mauritius Post delivery, MRA reminder, family chat) | Collect from MAUCORS phishing/scam pages, Police and bank fraud warnings, local news. Replace every real phone number, name and account number with fake ones of the **same format**, so redaction is still tested |
 | **done** | **DIFrauD** (MIT, LREC-COLING 2024; Cleanlab-cleaned, hand-curated labels): SMS (UCI spam + Mishra & Soni smishing), email phishing, job scams | Model calibration (PLAN §3.6) | 360 messages: 30 scam + 30 genuine per domain, their validation split → our `dev`, their test split → our `test` | `npm run fetch-data` → `data/eval/messages.jsonl` (binary `label`: `scam` / `genuine`). Note: its SMS "deceptive" class includes marketing spam |
-| **2** | Mishra & Soni SMS phishing set (ham / spam / smishing) | False alarms on ordinary SMS; recall on smishing outside Mauritius | Sample 300 (100 per class). Rules-only run on all of it is free; full pipeline on 50 | Mendeley Data (link in §6) |
+| covered | Mishra & Soni SMS phishing set (ham / spam / smishing) | — | — | Already inside DIFrauD's SMS domain (cleaned). Fetch the original only if the rules need more smishing than DIFrauD's 60 SMS scams |
 | **done** | Domain lists: Tranco top sites (good) + URLhaus online hosts (bad), from Jasveer's dumps | Lookalike rule false positives; step 2 intel criterion; seeded `SHARED_HOSTS` | `data/eval/domains.jsonl`: top-100 + 99 brand-token traps (good), 100 named online hosts (bad, defanged `[.]`) | `npm run build-url-data` from `data/raw/` (gitignored); see §1 |
 | **4** | Email headers, hand-made | D14 rules: `dmarc=fail`, Reply-To mismatch, display-name spoofing | 5 spoofed + 5 real newsletters | Team inboxes ("Show original", headers only, addresses redacted). The SpamAssassin corpus is from 2002–2005, before DMARC existed, so it can only test parsing |
 | **5** | Coach call scenarios, hand-written | Coach scoring + short-circuit | 12 answer lists | Write from Police scam-call warnings; they live in `coach.test.ts` |
@@ -83,6 +83,7 @@ Nothing here trains a model. The data is an **evaluation set**: it checks the re
 **Eval runner** (`npm run eval`, Backend 1). Built: `record` (live Jev + Claude, redacted, resumable) and `calibrate` (offline: fits `src/lib/calibration.json` on `dev` SMS + email, reports on `test`). To do with `rules.ts`: a `rules` mode that needs no keys, runs in CI and prints a 3 × 3 confusion table, the misses and the lookalike false positives on `domains.jsonl`.
 
 **Proposed pass bar:** no scam rated `SAFE` (the miss that hurts an elder), and fewer than 10% of genuine messages above `SAFE`.
+**Where we are (2026-11-13, models only, no rules yet, test split SMS + email):** 2/60 scams `SAFE` (both email phishing), 18% of genuine messages above `SAFE`. The rules must close the recall gap; the false alarms come mostly from Claude `SUSPICIOUS` calls (81% precise), so watch them when the real evidence goes into the prompt.
 
 **About `/last-3-days`:** that skill is not installed in this project, and 3 days is the wrong window. Mauritian campaigns (bank OTP, parcel fee, CEB disconnection) recur for months, so a 3-day sweep would return a handful of items, skewed to whatever made the news that week. Instead:
 - Run the installed `research` skill once over the **last 12–18 months** (MAUCORS, Police, bank warnings, local news). It writes a sourced Markdown file that seeds both the test set and the KB.

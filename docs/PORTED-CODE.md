@@ -1,103 +1,20 @@
 # Ported Code
 
-Working code from the day-0 prototype, adapted to the scam pipeline. Copy these files as-is, then build on them. Tests run with plain Node (type stripping, Node ≥ 22.18) and `node:assert`, with no test framework.
+Working code from the day-0 prototype, adapted to the scam pipeline. Copy the files still listed here as-is, then build on them. Tests run with plain Node (type stripping, Node ≥ 22.18) and `node:assert`, with no test framework.
+
+## Already landed (2026-11-13): the repo is the source of truth
+
+`src/lib/jev.ts` and `src/lib/scam-signals.ts` (+ test) were copied in and have since changed, so their old copies are removed from this file. Read the code itself. What changed:
+- `scam-signals.ts`: `scamScore(p, weights = PLAN_WEIGHTS)` takes calibrated weights; `PLAN_WEIGHTS`, `SIGNAL_NAMES` and `signalValue` are exported. `SUSPICIOUS_CUTOFF` / `HIGH_RISK_CUTOFF` are gone: the cutoffs live in `src/lib/calibration.json` and are applied by `verdict.ts` `jevLevel` (PLAN §3.6).
+- `jev.ts`: unchanged apart from a note on the response shape verified on 2026-11-13 (`noul` answers carry only `noul`; `choice` answers add `probabilities` and `confidence`).
+- `src/shared/coach.ts` reuses the same noisy-OR shape with the coach questions from PLAN §4. Its cutoff stays fixed: the coach is not calibrated.
 
 ## `package.json` scripts
+`test`, `fetch-data`, `build-url-data` and `eval` already exist. Still to add:
 ```json
-"seed": "node --env-file=.env scripts/seed-knowledge.mjs",
-"test": "node src/lib/rate-limit.test.ts && node src/lib/scam-signals.test.ts"
+"seed": "node --env-file=.env scripts/seed-knowledge.mjs"
 ```
-Append each new `*.test.ts` to `test` as it is written.
-
-## `src/lib/jev.ts`
-```ts
-// Server-only. Jev via OpenRouter's Decisions API (alpha; shape may change — verify against current docs).
-export type JevQuestion =
-  | { type: 'choice'; instructions: string; criteria: Record<string, string> }
-  | { type: 'noul'; instructions: string; criteria?: { false: string; true: string } };
-
-export type JevAnswers = Record<string, { type: string; choice?: string; noul?: number; confidence?: number }>;
-
-export async function callJevDecision(state: unknown, questions: Record<string, JevQuestion>): Promise<JevAnswers> {
-  const res = await fetch('https://openrouter.ai/api/alpha/decisions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'typesafe/jev-1.13', state, questions }),
-    signal: AbortSignal.timeout(5000),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`Jev decision failed ${res.status}: ${JSON.stringify(data?.error ?? data)}`);
-  return data.answers as JevAnswers;
-}
-```
-`noul` is a probability (0–1) that the answer is "true".
-
-## `src/lib/scam-signals.ts` (adapted from the old `triage.ts`)
-```ts
-// Pure rules (no imports) so they can be tested with plain Node.
-export const SIGNALS = {
-  asksForSecret: { weight: 1, question: 'Does the message ask for an OTP, PIN, password, card number or bank login?' },
-  paymentRequest: { weight: 0.7, question: 'Does it ask the reader to pay, transfer money or buy vouchers or gift cards?' },
-  impersonation: {
-    weight: 0.6,
-    question: 'Does it claim to be from a bank, Mauritius Post, CEB, CWA, MRA, Police, a telecom company or a family member?',
-  },
-  pressure: { weight: 0.5, question: 'Does it threaten, rush or create panic?' },
-  tooGoodToBeTrue: { weight: 0.4, question: 'Does it promise a prize, refund, job or investment return?' },
-} as const;
-
-export type SignalName = keyof typeof SIGNALS;
-export const SUSPICIOUS_CUTOFF = 0.6;
-export const HIGH_RISK_CUTOFF = 0.85;
-
-// Noisy-OR: score = 1 - Π(1 - weight·p). One strong signal is enough; weak ones add up.
-// A missing signal adds nothing (0): Jev can only raise risk, and when the Jev call fails the pipeline
-// skips Jev entirely (verdict from rules + Claude). A present but non-finite value (NaN) fails closed (1).
-export function scamScore(p: Partial<Record<SignalName, number>>) {
-  let safe = 1;
-  for (const name of Object.keys(SIGNALS) as SignalName[]) {
-    const raw = p[name];
-    const prob = raw == null ? 0 : Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1;
-    safe *= 1 - SIGNALS[name].weight * prob;
-  }
-  return Math.round((1 - safe) * 1000) / 1000;
-}
-
-const CLARIFY: Record<string, string> = {
-  sender: 'Who sent this? Add the number or name shown.',
-  link: 'Please paste the whole message, including any link.',
-  full_text: 'This looks cut off. Please paste the whole message.',
-};
-
-// Never stall a clear scam with a question: HIGH_RISK answers first.
-export function clarifyFor(t: { floorIsHighRisk: boolean; isFragment: boolean; missingField: string }) {
-  return !t.floorIsHighRisk && t.isFragment && Object.hasOwn(CLARIFY, t.missingField) ? CLARIFY[t.missingField] : undefined;
-}
-```
-
-`src/lib/scam-signals.test.ts` (starting point):
-```ts
-// Run: node src/lib/scam-signals.test.ts
-import assert from 'node:assert/strict';
-import { HIGH_RISK_CUTOFF, SUSPICIOUS_CUTOFF, clarifyFor, scamScore } from './scam-signals.ts';
-
-const none = { asksForSecret: 0, paymentRequest: 0, impersonation: 0, pressure: 0, tooGoodToBeTrue: 0 };
-assert.equal(scamScore(none), 0);
-assert.ok(scamScore({ ...none, asksForSecret: 0.9 }) >= HIGH_RISK_CUTOFF, 'secret request alone is high risk');
-assert.ok(scamScore({ ...none, pressure: 0.8 }) < SUSPICIOUS_CUTOFF, 'pressure alone is not');
-assert.ok(scamScore({ ...none, impersonation: 0.7, pressure: 0.7, paymentRequest: 0.5 }) >= SUSPICIOUS_CUTOFF, 'signals add up');
-assert.equal(scamScore({}), 0, 'no signals adds no risk (a failed Jev call is skipped, never scored)');
-assert.equal(scamScore({ ...none, asksForSecret: 7 }), 1, 'out-of-range input is clamped');
-assert.equal(scamScore({ ...none, asksForSecret: NaN }), 1, 'non-finite probability fails closed');
-
-assert.equal(clarifyFor({ floorIsHighRisk: true, isFragment: true, missingField: 'sender' }), undefined, 'never stall high risk');
-assert.match(clarifyFor({ floorIsHighRisk: false, isFragment: true, missingField: 'sender' }) ?? '', /Who sent this/);
-assert.equal(clarifyFor({ floorIsHighRisk: false, isFragment: true, missingField: 'none' }), undefined);
-assert.equal(clarifyFor({ floorIsHighRisk: false, isFragment: false, missingField: 'link' }), undefined);
-assert.equal(clarifyFor({ floorIsHighRisk: false, isFragment: true, missingField: 'constructor' }), undefined);
-console.log('scam-signals ok');
-```
-`src/shared/coach.ts` reuses the same noisy-OR shape with the coach questions from PLAN §4.
+Append each new `*.test.ts` to `test` as it is written (for example `node src/lib/rate-limit.test.ts`).
 
 ## `src/lib/rate-limit.ts` (ported; buckets are now per route)
 ```ts
