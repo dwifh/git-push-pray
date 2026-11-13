@@ -10,6 +10,7 @@ Closes #
 
 ## Checklist
 
-- [ ] `npm run lint` and `npm run typecheck` pass
-- [ ] Tested on Android (Expo Go or APK) and/or web
+- [ ] `npm run lint`, `npm run typecheck` and `npm test` pass
+- [ ] Changed the Jev questions, Claude prompt or eval set? Re-ran `npm run eval -- record` + `-- calibrate` and committed `src/lib/calibration.json`
+- [ ] Tested on web at phone width (360 × 800)
 - [ ] Screenshots added for UI changes
