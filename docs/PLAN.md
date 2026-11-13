@@ -12,7 +12,7 @@ As of 2026-11-13. **Step 0 is done; step 1 is in progress** (`redact`, `verdict`
 - Git: work on local branch `Ayush`, which tracks `origin/features-Ayush`. Never push to `main`; merge through a PR. (Exception: the calibration commit `8fb70a8` was fast-forwarded to `main` on request; `gh` is not installed here.)
 - Owners: Ayush = Backend 1, Rushil = Backend 2, Jasveer = Frontend 1, Anjali = Frontend 2 (`docs/TEAM-PLAN.md` §1). URL lists checked: eval set `data/eval/domains.jsonl` + `SHARED_HOSTS` rule (§3.2); raw dumps stay out of git.
 - `tsconfig.json` has `allowImportingTsExtensions: true` and `types: ["node"]` (TS 6 no longer auto-loads `@types/*`); `@types/node` is installed. Node 22.20 runs the `*.test.ts` files directly.
-- **Calibrated routing (§3.6), done early as part of step 1**: `calibration`, `verdict`, `scam-signals`, `redact` (pure, tested), `jev.ts`, `claude.ts`, `npm run fetch-data`, `npm run eval`. Dataset: DIFrauD (TEAM-PLAN §5), 360 messages. Fitted on SMS + email dev rows (job ads are out-of-domain: Jev AUC 0.30). Result in `src/lib/calibration.json`: Jev AUC 0.965 (test 0.958), cutoffs 0.30 / 0.72, all 5 signals kept; Claude accuracy 0.94, `HIGH_RISK` precision 0.96 → trusted. Held-out test, models only: 2/60 scams `SAFE` (PLAN cutoffs: 3/60), 18% genuine above `SAFE` (PLAN: 17%). Not yet wired: the pipeline (step 3) must `loadCalibration` it, then re-record with real evidence. Team sign-off needed (it replaces the fixed 0.6 / 0.85). Still to do in step 1: `senderHash`, `extract`, `rules`, `coach`, `email`, `whatsapp`, `rate-limit`.
+- **Calibrated routing (§3.6), done early as part of step 1**: `calibration`, `verdict`, `scam-signals`, `redact` (pure, tested), `jev.ts`, `claude.ts`, `npm run fetch-data`, `npm run eval`. Dataset: DIFrauD (TEAM-PLAN §5), 360 messages. Fitted on SMS + email dev rows (job ads are out-of-domain: Jev AUC 0.30). Result in `src/lib/calibration.json`: Jev AUC 0.965 (test 0.958), cutoffs 0.30 / 0.72, all 5 signals kept; Claude accuracy 0.94, `HIGH_RISK` precision 0.96 → trusted. Held-out test, models only: 2/60 scams `SAFE` (PLAN cutoffs: 3/60), 18% genuine above `SAFE` (PLAN: 17%). Not yet wired: the pipeline (step 3) must `loadCalibration` it, then re-record with real evidence. Team approved it on 2026-11-13 (it replaces the fixed 0.6 / 0.85), together with `SHARED_HOSTS` (§3.2). `src/shared/types.ts` (TEAM-PLAN §3 contract, `Verdict` now lives there) landed 2026-11-13. Still to do in step 1: `senderHash`, `extract`, `rules`, `coach`, `email`, `whatsapp`, `rate-limit`.
 
 ## 1. Locked decisions
 
@@ -61,7 +61,7 @@ Client-safe (`src/shared/`, no secrets, importable by screens):
 | File | Responsibility |
 |------|----------------|
 | `coach.ts` | Coach questions, weights, `coachScore(answers)`, `HANG_UP_CUTOFF`. Pure. |
-| `types.ts` | `ScanResult`, `Report`, enums for institution, district, vector. |
+| `types.ts` | **Landed.** The TEAM-PLAN §3 contract: request/response types, `Verdict`, enums for institution, district, vector, `LIMITS`, `isOneOf`. |
 
 API routes (`src/app/api/`): `scan+api.ts` (POST), `email+api.ts` (POST), `coach+api.ts` (POST free text → Jev), `reports+api.ts` (GET trending, POST report), `alert+api.ts` (POST `{ template, to, vars }` → WhatsApp send), `health+api.ts` (GET).
 

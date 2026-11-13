@@ -1,9 +1,9 @@
 // Pure: turns a labelled eval run into the cutoffs and trust levels the pipeline routes on,
 // so a model's verdict counts only as far as the dataset shows it is right.
 // A model can be demoted (HIGH_RISK → SUSPICIOUS), never silenced: a scam only one model caught must not end up SAFE.
+import type { Verdict } from '../shared/types.ts';
 import { PLAN_WEIGHTS, SIGNAL_NAMES, scamScore, signalValue, type SignalName, type Weights } from './scam-signals.ts';
 
-export type Verdict = 'SAFE' | 'SUSPICIOUS' | 'HIGH_RISK';
 export type EvalRow = {
   label: 'scam' | 'genuine';
   signals?: Partial<Record<SignalName, number>> | null; // null = the Jev call failed
