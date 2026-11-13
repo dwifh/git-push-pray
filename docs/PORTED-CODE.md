@@ -12,13 +12,13 @@ Working code from the day-0 prototype, adapted to the scam pipeline. Copy the fi
 - `src/shared/coach.ts` reuses the same noisy-OR shape with the coach questions from PLAN §4. Its cutoff stays fixed: the coach is not calibrated.
 
 ## `package.json` scripts
-`test`, `fetch-data`, `build-url-data` and `eval` already exist. Still to add:
+`test`, `fetch-data`, `build-url-data`, `eval`, `seed` and `check-intel` exist. For reference:
 ```json
 "seed": "node --env-file=.env scripts/seed-knowledge.mjs"
 ```
 Append each new `*.test.ts` to `test` as it is written (for example `node src/lib/rate-limit.test.ts`).
 
-## `src/lib/rag.ts` (unchanged)
+## `src/lib/rag.ts` (landed 2026-11-13, since changed: injectable `fetch`/`kb`/`timeoutMs`, returns `[]` on any failure, results carry `id` + `institution`; the repo is the source of truth)
 ```ts
 // Server-only. Vectors and their model come from `npm run seed` (scripts/seed-knowledge.mjs).
 import kb from '../../data/knowledge-vectors.json';

@@ -1,6 +1,6 @@
 // Run: node src/lib/rate-limit.test.ts
 import assert from 'node:assert/strict';
-import { allowRequest } from './rate-limit.ts';
+import { allowRequest, clientKey } from './rate-limit.ts';
 
 const t = 1_000_000;
 assert.equal(allowRequest('scan', 'a', 2, 10, t), true);
@@ -13,4 +13,6 @@ assert.equal(allowRequest('scan', 'a', 2, 10, t + 60_001), true, 'window slides'
 assert.equal(allowRequest('scan', 'c', 5, 3, t + 60_002), true);
 assert.equal(allowRequest('scan', 'd', 5, 3, t + 60_002), false, 'global cap');
 assert.equal(allowRequest('alert', 'd', 5, 3, t + 60_002), true, 'global cap is per route');
+assert.equal(clientKey(new Request('http://x', { headers: { 'cf-connecting-ip': '1.2.3.4', 'x-forwarded-for': '9.9.9.9' } })), '1.2.3.4', 'trusts only cf-connecting-ip');
+assert.equal(clientKey(new Request('http://x')), 'anonymous');
 console.log('rate-limit ok');

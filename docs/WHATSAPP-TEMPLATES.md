@@ -2,7 +2,7 @@
 
 Outbound only (D3). Submit both now in Meta Business Manager → WhatsApp Manager → Message templates → Create. **Submit `call_alert` first**: it drives the Coach "HANG UP" demo moment and is the clearest safety use case. Submit `scam_warning` straight after; approval runs in parallel with the build.
 
-Until both are approved, `WHATSAPP_TEMPLATE_MODE=test` routes every alert to Meta's `hello_world`.
+Until both are approved, `WHATSAPP_TEMPLATE_MODE=test` routes every alert to Meta's `hello_world`, and `WHATSAPP_TEMPLATE_MODE=text` sends our exact wording as a plain message (it only arrives if the recipient messaged the number in the last 24 h). The wording lives in `src/shared/messages.ts`; change it there and here together.
 
 ## Rules both templates follow
 - **Category `UTILITY`.** Meta's categorization page allows utility when a template is non-promotional and either "specific to or requested by the user" or "essential or critical to the user (for example, to ensure user safety)". Both templates are safety alerts that the user set up by naming a trusted contact. Nothing in them sells, invites or persuades. Since 9 April 2025 Meta approves a misjudged utility template as `MARKETING` instead of rejecting it, and it can recategorise later with 1 day's notice. If that happens, the template still sends, at marketing price. Do not reword it towards promotion to "fix" that.
