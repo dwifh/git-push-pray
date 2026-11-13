@@ -35,6 +35,7 @@ export default function AppTabs() {
 
 export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
   return (
+    // @ts-expect-error -- upstream ref type mismatch (expo-router TabTriggerSlotProps vs RN Pressable), template code
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}

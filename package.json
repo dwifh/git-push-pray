@@ -1,5 +1,5 @@
 {
-  "name": "hackathon",
+  "name": "hackathon-app",
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
@@ -29,6 +29,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -37,7 +39,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "typecheck": "expo customize tsconfig.json && tsc --noEmit"
   },
   "private": true
 }

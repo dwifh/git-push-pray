@@ -1,0 +1,5 @@
+# Normalize line endings so Windows/macOS/Linux teammates produce clean diffs
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ttf binary
