@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   if (!allowRequest('alert', clientKey(request), 3)) return Response.json({ error: 'Too many alerts. Please wait a minute.' }, { status: 429 });
   let template: unknown, to: unknown, vars: unknown;
   try {
-    ({ template, to, vars } = await request.json());
+    ({ template, to, vars } = (await request.json()) ?? {});
     if (typeof template !== 'string' || typeof to !== 'string' || !Array.isArray(vars) || !vars.every((v) => typeof v === 'string')) {
       throw new Error('Invalid request');
     }
