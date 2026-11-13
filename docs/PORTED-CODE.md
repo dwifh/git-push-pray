@@ -28,7 +28,7 @@ const hits = (store.__rateLimitHits ??= new Map<string, number[]>());
 export function allowRequest(
   route: string,
   ip: string,
-  perUser = Number(process.env.ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE) || 5,
+  perUser = Number(process.env.ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE) || 10,
   global = Number(process.env.ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE) || 60,
   now = Date.now(),
 ) {
