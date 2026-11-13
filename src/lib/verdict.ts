@@ -1,6 +1,7 @@
 // Pure. Verdict = max(rule floor, jevLevel, claudeLevel): models can only add risk. The calibration run
 // (src/lib/calibration.json, `npm run eval`, PLAN §3.6) decides whether they may add HIGH_RISK or only SUSPICIOUS.
-import { DEFAULT_CALIBRATION, type Calibration, type Verdict } from './calibration.ts';
+import type { Verdict } from '../shared/types.ts';
+import { DEFAULT_CALIBRATION, type Calibration } from './calibration.ts';
 import { SIGNAL_NAMES } from './scam-signals.ts';
 
 export const Level = { SAFE: 0, SUSPICIOUS: 1, HIGH_RISK: 2 } as const;

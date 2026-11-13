@@ -1,10 +1,12 @@
 // Pure. PLAN §3.1: everything downstream (LLMs, logs, Feed) sees only this output.
-// shortcut: regex misses names and free-form addresses; say so openly (PLAN D7). senderHash is still to do (step 1).
+// shortcut: regex misses names and free-form addresses; say so openly (PLAN D7).
 
-const URL_RE = /\bhttps?:\/\/([^\s/?#]+)([^\s?#]*)(?:[?#]\S*)?/gi;
+export const URL_RE = /\bhttps?:\/\/([^\s/?#]+)([^\s?#]*)(?:[?#]\S*)?/gi;
 const EMAIL_RE = /[\w.+-]+@(?:[a-z0-9-]+\.)+[a-z]{2,}/gi;
 // Host, then an optional path (kept, redacted below); a query or fragment (needs ≥1 char after ? or #) is dropped.
-const BARE_DOMAIN_RE = /(?<![@\w.-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})(?![\w-])(\/[^\s?#]*)?(?:[?#]\S+)?/gi;
+// Unicode-aware, so a raw "mсb-2024.mu" (Cyrillic с) is kept whole; never the part after an "@". extract.ts reuses it.
+export const BARE_DOMAIN_RE =
+  /(?<![@\p{L}\p{N}._-])((?:[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+\p{L}{2,})(?![\p{L}\p{N}@_-])(\/[^\s?#]*)?(?:[?#]\S+)?/giu;
 
 // Digit rules use (?<!\d)/(?!\d), not \b, so "OTP482913" is caught too.
 const NIC_RE = /(?<![a-z0-9])[a-z]\d{12}[a-z0-9](?![a-z0-9])/gi; // before CARD: its 13 digits would read as a card
@@ -34,4 +36,12 @@ export function redact(text: string) {
     .replace(CODE_RE, '[CODE]')
     .replace(NUMBER_RE, '[NUMBER]')
     .replace(/(.)/g, (_, c: string) => hosts[c.charCodeAt(0) - 0xe100]);
+}
+
+// Reports and Feed store senders only as this salted hash (PLAN D7). Web Crypto: runs on Workers and Node.
+export async function senderHash(sender: string, salt = process.env.HASH_SALT) {
+  if (!salt) throw new Error('HASH_SALT is not set'); // an unsalted phone-number hash is trivially reversible
+  const normalised = sender.toLowerCase().replace(/[\s().-]/g, '');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + normalised));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }

@@ -1,19 +1,11 @@
 // Server-only. Threat intel by registrable domain / host only (PLAN D6, §3.2): the server never fetches
 // untrusted URLs and never submits a full URL. Each lookup has a timeout; any failure → 'unknown'.
+import { isSharedHost } from './extract.ts';
 import { Level } from './verdict.ts';
 
 export type VtResult = { malicious: number; suspicious: number } | 'unknown';
 export type UrlhausResult = 'listed' | 'not_listed' | 'unknown';
 export type Intel = { vt: VtResult; urlhaus: UrlhausResult };
-
-// PLAN §3.2, exact host match. Platforms that host files for anyone: a hit caps at SUSPICIOUS.
-// Per-tenant subdomains (x.workers.dev, x.pages.dev, x.github.io, …) are deliberately absent.
-export const SHARED_HOSTS = new Set([
-  'github.com', 'raw.githubusercontent.com', 'codeload.github.com', 'gitlab.com', 'bitbucket.org',
-  'discord.com', 'cdn.discordapp.com', 'drive.google.com', 'docs.google.com', 'www.dropbox.com',
-  'dl.dropboxusercontent.com', 'pastebin.com', 'linktr.ee', 'pixeldrain.com', 'www.mediafire.com',
-  'res.cloudinary.com', 'web.archive.org',
-]);
 
 export const refang = (d: string) => d.replaceAll('[.]', '.');
 
@@ -71,6 +63,6 @@ export async function checkDomain(domain: string, { fetch: f = fetch, timeoutMs 
 // (VirusTotal had google.com at malicious 1 on 2026-11-13), so the weak signal needs two votes.
 export function intelLevel(host: string, { vt, urlhaus }: Intel): Level {
   const strong = urlhaus === 'listed' || (vt !== 'unknown' && vt.malicious >= 2);
-  if (strong) return SHARED_HOSTS.has(normalise(host)) ? Level.SUSPICIOUS : Level.HIGH_RISK;
+  if (strong) return isSharedHost(normalise(host)) ? Level.SUSPICIOUS : Level.HIGH_RISK; // SHARED_HOSTS cap (PLAN §3.2)
   return vt !== 'unknown' && vt.malicious + vt.suspicious >= 2 ? Level.SUSPICIOUS : Level.SAFE;
 }

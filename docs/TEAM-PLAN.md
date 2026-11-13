@@ -1,6 +1,6 @@
 # Team Plan — 4 people
 
-Updated 2026-11-13 (evening). Step 0 is live, and calibrated model routing (PLAN §3.6) has landed on `main`. Two backend and two frontend owners work in parallel. Frontend builds against mock data until each API is live. Nothing here reopens a locked decision in `PLAN.md`; the two items in §2 need team sign-off.
+Updated 2026-11-13 (evening). Step 0 is live, and calibrated model routing (PLAN §3.6) has landed on `main`. Two backend and two frontend owners work in parallel. Frontend builds against mock data until each API is live. Nothing here reopens a locked decision in `PLAN.md`; the two items in §2 were approved by the team on 2026-11-13.
 
 ## 1. Who does what, and what is next
 
@@ -17,7 +17,7 @@ Updated 2026-11-13 (evening). Step 0 is live, and calibrated model routing (PLAN
 - **Tranco top-1M**: not a signal, because `ceb.mu` is not in it, so "unranked" would flag the genuine CEB demo message, and popularity can never lower risk. It is good **evaluation** data: popular domains that merely contain a brand token are the false-positive traps for the lookalike rule.
 - **What landed instead** (on `features-Ayush`): `npm run build-url-data` reads the raw files from `data/raw/` (gitignored) and writes `data/eval/domains.jsonl` (199 good, 100 bad and defanged, about 20 KB). It also prints the shared-platform candidates that seeded `SHARED_HOSTS`. To rebuild: `git show origin/feature-jasveer:docs/good_url.csv > data/raw/tranco.csv` and the same for `urlhaus.csv`.
 
-## 2. Needs team sign-off
+## 2. Team sign-off (approved 2026-11-13)
 
 1. **Calibrated Jev cutoffs** replace the fixed 0.6 / 0.85: they are now 0.30 / 0.72 (PLAN §3.6, `src/lib/calibration.json`). Claude `HIGH_RISK` stays fully trusted (96% precise). Re-check after the pipeline lands.
 2. **`SHARED_HOSTS`** (PLAN §3.2): a URLhaus or VirusTotal hit on a shared platform counts as `SUSPICIOUS`, never `HIGH_RISK`, and community reports never count there.
@@ -80,7 +80,7 @@ Nothing here trains a model. The data is an **evaluation set**: it checks the re
 `{ "id", "text", "sender"?, "channel": "SMS|WHATSAPP|EMAIL|WEB", "label": "scam|genuine", "split": "dev|test", "institution"?, "expected"?: "SAFE|SUSPICIOUS|HIGH_RISK", "mustFlag"?: [...], "source": "<url>" }`.
 `label` and `split` are required (calibration is binary). Hand-built Mauritius messages also carry `institution` and `expected`; alternate them between `dev` and `test`. Use `id` prefix `mu-`.
 
-**Eval runner** (`npm run eval`, Backend 1). Built: `record` (live Jev + Claude, redacted, resumable) and `calibrate` (offline: fits `src/lib/calibration.json` on `dev` SMS + email, reports on `test`). To do with `rules.ts`: a `rules` mode that needs no keys, runs in CI and prints a 3 × 3 confusion table, the misses and the lookalike false positives on `domains.jsonl`.
+**Eval runner** (`npm run eval`, Backend 1). Built: `record` (live Jev + Claude, redacted, resumable) and `calibrate` (offline: fits `src/lib/calibration.json` on `dev` SMS + email, reports on `test`). Also built: `rules` (offline, no keys, CI-safe): the rule-floor table (3 × 3 once rows carry `expected`), the misses, the genuine messages the rules alone lift above `SAFE`, and the lookalike false positives on `domains.jsonl` (exit code 1 if any).
 
 **Proposed pass bar:** no scam rated `SAFE` (the miss that hurts an elder), and fewer than 10% of genuine messages above `SAFE`.
 **Where we are (2026-11-13, models only, no rules yet, test split SMS + email):** 2/60 scams `SAFE` (both email phishing), 18% of genuine messages above `SAFE`. The rules must close the recall gap; the false alarms come mostly from Claude `SUSPICIOUS` calls (81% precise), so watch them when the real evidence goes into the prompt.

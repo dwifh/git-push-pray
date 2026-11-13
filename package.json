@@ -43,9 +43,9 @@
     "lint": "expo lint",
     "salt": "node scripts/gen-salt.mjs",
     "typecheck": "expo customize tsconfig.json && tsc --noEmit",
-    "test": "node src/lib/scam-signals.test.ts && node src/lib/calibration.test.ts && node src/lib/verdict.test.ts && node src/lib/redact.test.ts && node src/shared/messages.test.ts && node src/lib/whatsapp.test.ts && node src/lib/rate-limit.test.ts && node src/lib/threat-intel.test.ts && node src/lib/rag.test.ts && node src/lib/reports.test.ts && node --import ./scripts/alias-hook.mjs src/lib/routes.test.ts",
+    "test": "node src/shared/types.test.ts && node src/lib/scam-signals.test.ts && node src/lib/calibration.test.ts && node src/lib/verdict.test.ts && node src/lib/redact.test.ts && node src/lib/extract.test.ts && node src/lib/rules.test.ts && node src/lib/email.test.ts && node src/lib/rate-limit.test.ts && node src/lib/scan-pipeline.test.ts && node src/shared/messages.test.ts && node src/lib/whatsapp.test.ts && node src/lib/threat-intel.test.ts && node src/lib/rag.test.ts && node src/lib/reports.test.ts && node --import ./scripts/alias-hook.mjs src/lib/routes.test.ts",
     "fetch-data": "node scripts/fetch-datasets.mjs",
-    "eval": "node --env-file=.env scripts/eval.ts",
+    "eval": "node --env-file-if-exists=.env scripts/eval.ts",
     "build-url-data": "node scripts/build-url-data.mjs",
     "seed": "node --env-file=.env scripts/seed-knowledge.mjs",
     "check-intel": "node --env-file=.env scripts/check-intel.ts"

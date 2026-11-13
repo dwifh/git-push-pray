@@ -1,6 +1,6 @@
 // Run: node src/lib/scam-signals.test.ts
 import assert from 'node:assert/strict';
-import { PLAN_WEIGHTS, clarifyFor, scamScore } from './scam-signals.ts';
+import { PLAN_WEIGHTS, SIGNALS, clarifyFor, scamScore, signalFlags } from './scam-signals.ts';
 
 const none = { asksForSecret: 0, paymentRequest: 0, impersonation: 0, pressure: 0, tooGoodToBeTrue: 0 };
 assert.equal(scamScore(none), 0);
@@ -20,4 +20,9 @@ assert.match(clarifyFor({ floorIsHighRisk: false, isFragment: true, missingField
 assert.equal(clarifyFor({ floorIsHighRisk: false, isFragment: true, missingField: 'none' }), undefined);
 assert.equal(clarifyFor({ floorIsHighRisk: false, isFragment: false, missingField: 'link' }), undefined);
 assert.equal(clarifyFor({ floorIsHighRisk: false, isFragment: true, missingField: 'constructor' }), undefined);
+
+// A raised Jev score always names its reasons, strongest first; a zero-weight signal never does.
+assert.deepEqual(signalFlags({ ...none, pressure: 0.9, asksForSecret: 0.8 }), [SIGNALS.asksForSecret.flag, SIGNALS.pressure.flag]);
+assert.deepEqual(signalFlags({ ...none, pressure: 0.4, paymentRequest: 0.3 }), [SIGNALS.paymentRequest.flag], 'only weak signals: the biggest one');
+assert.deepEqual(signalFlags({ ...none, pressure: 1, impersonation: 0.6 }, { ...PLAN_WEIGHTS, pressure: 0 }), [SIGNALS.impersonation.flag]);
 console.log('scam-signals ok');
