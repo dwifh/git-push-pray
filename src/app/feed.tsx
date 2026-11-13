@@ -1,6 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ReportForm } from '@/components/ReportForm';
 import { FONT, useTheme } from '@/components/theme';
@@ -14,17 +13,17 @@ export default function Feed() {
   const [data, setData] = useState<Trending>();
   const [error, setError] = useState('');
   const [reporting, setReporting] = useState(false);
-  const load = useCallback(() => {
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
     let live = true;
     api<unknown>('/api/reports')
       .then((d) => { if (live) { setData(toTrending(d)); setError(''); } })
       .catch((e: Error) => { if (live) setError(e.message); });
     return () => { live = false; };
-  }, []);
-  // Reloads each time the tab is opened, so a report sent from the Coach shows up.
-  useFocusEffect(load);
+  }, [reload]);
 
-  if (reporting) return <ReportForm onDone={(sent) => { setReporting(false); if (sent) load(); }} />;
+  if (reporting) return <ReportForm onDone={(sent) => { setReporting(false); if (sent) setReload((n) => n + 1); }} />;
 
   const top = data?.byInstitution[0];
   const total = data?.byInstitution.reduce((n, r) => n + r.count, 0) ?? 0;
@@ -41,7 +40,7 @@ export default function Feed() {
       {error ? (
         <Card accent={t.orange}>
           <ErrorText>{error}</ErrorText>
-          <Button label="Try again" kind="ghost" icon="refresh" onPress={() => { setError(''); load(); }} />
+          <Button label="Try again" kind="ghost" icon="refresh" onPress={() => { setError(''); setReload((n) => n + 1); }} />
         </Card>
       ) : !data ? (
         <ActivityIndicator size="large" color={t.teal} accessibilityLabel="Loading the feed" style={{ padding: 40 }} />
@@ -81,7 +80,7 @@ export default function Feed() {
             <Card>
               <Eyebrow>Where people saw them</Eyebrow>
               <View style={s.chart} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                {data.byDistrict.slice(0, 5).map((r, i) => (
+                {data.byDistrict.slice(0, 6).map((r, i) => (
                   <View key={r.district} style={[s.col, { height: `${Math.max(12, (r.count / data.byDistrict[0].count) * 100)}%`, backgroundColor: i === 0 ? t.orange : i < 3 ? t.teal : t.border }]} />
                 ))}
               </View>

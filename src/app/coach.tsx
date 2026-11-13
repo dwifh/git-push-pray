@@ -3,7 +3,6 @@ import { useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ContactSettings } from '@/components/ContactSettings';
 import { HangUp } from '@/components/HangUp';
-import { ReportForm } from '@/components/ReportForm';
 import { FONT, useTheme } from '@/components/theme';
 import { Avatar, Body, Button, Card, ErrorText, Eyebrow, Field, Orb, Pill, Screen, Title, type IconName } from '@/components/ui';
 import { api } from '@/shared/api';
@@ -25,7 +24,6 @@ export default function Coach() {
   const [answers, setAnswers] = useState<Answers>({});
   const [serverScore, setServerScore] = useState<number>();
   const [settings, setSettings] = useState(false);
-  const [reporting, setReporting] = useState(false);
   const [said, setSaid] = useState('');
   const [check, setCheck] = useState<'idle' | 'checking' | 'none' | { error: string }>('idle');
   // The server renders "Hello"; the phone's own clock picks the greeting (no hydration mismatch).
@@ -34,10 +32,9 @@ export default function Coach() {
   const restart = () => { setStep('intro'); setAnswers({}); setServerScore(undefined); setSaid(''); setCheck('idle'); };
 
   if (settings) return <ContactSettings onDone={() => setSettings(false)} />;
-  if (reporting) return <ReportForm initial={{ vector: 'CALL' }} onDone={() => setReporting(false)} />;
   // Scored on-device after every tap: the warning shows the moment the cutoff is reached (PLAN §4 short-circuit).
   if (isHangUp(coachScore(answers, serverScore))) {
-    return <HangUp answers={answers} flag={topFlag(answers)} onSettings={() => setSettings(true)} onReport={() => setReporting(true)} onRestart={restart} />;
+    return <HangUp answers={answers} flag={topFlag(answers)} onSettings={() => setSettings(true)} onRestart={restart} />;
   }
 
   if (typeof step === 'number') {
@@ -46,26 +43,14 @@ export default function Coach() {
       setAnswers({ ...answers, [q.id]: v });
       setStep(step + 1 < QUESTIONS.length ? step + 1 : 'done');
     };
-    // Undo a mis-tap: go back one question and forget its answer.
-    const back = () => {
-      const prev = QUESTIONS[step - 1].id;
-      setAnswers(Object.fromEntries(Object.entries(answers).filter(([k]) => k !== prev)));
-      setStep(step - 1);
-    };
     return (
       <Screen>
         <View style={s.row}>
-          {step > 0 ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={back} style={[s.iconBtn, { backgroundColor: t.card, borderColor: t.border }]}>
-              <Ionicons name="arrow-back" size={28} color={t.text} />
-            </Pressable>
-          ) : (
-            <View style={{ width: 52 }} />
-          )}
-          <Text style={[s.stepTitle, { color: t.text }]}>Question {step + 1} of {QUESTIONS.length}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Start over" onPress={restart} style={[s.iconBtn, { backgroundColor: t.card, borderColor: t.border }]}>
             <Ionicons name="close" size={28} color={t.text} />
           </Pressable>
+          <Text style={[s.stepTitle, { color: t.text }]}>Question {step + 1} of {QUESTIONS.length}</Text>
+          <View style={{ width: 52 }} />
         </View>
         <View style={s.segments} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           {QUESTIONS.map((x, i) => (
