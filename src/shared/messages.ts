@@ -28,7 +28,7 @@ ${TRUSTED}`,
 export type TemplateName = keyof typeof TEMPLATES;
 
 // PLAN D15: we never spread a link. Any word.word counts as a domain, so "my.t" is refused too.
-const LINKY = /https?:|www\.|\w\.\w/i;
+const LINKY = /h[tx]{2}ps?:|www\.|\w\.\w|\[\.\]|\(\.\)/i; // defanged links too: we never spread a scam link
 
 /** Throws if a variable could carry a link, a second line or too much text. */
 export function validateVars(name: TemplateName, vars: string[]): void {

@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     const now = Date.now();
     return Response.json(trending(await getStore().since(now - WEEK), now));
   } catch {
-    return Response.json({ error: 'Could not load the scam feed. Please try again.' }, { status: 500 });
+    return Response.json({ error: 'Could not load the scam feed. Please try again.' }, { status: 502 });
   }
 }
 
@@ -26,6 +26,6 @@ export async function POST(request: Request) {
     await getStore().add({ ...report, reporterHash: await hashReporter(ip), createdAt: Date.now() });
     return Response.json({ ok: true });
   } catch {
-    return Response.json({ error: 'Could not save your report. Please try again.' }, { status: 500 });
+    return Response.json({ error: 'Could not save your report. Please try again.' }, { status: 502 });
   }
 }

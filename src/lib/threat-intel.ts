@@ -18,7 +18,7 @@ export const SHARED_HOSTS = new Set([
 export const refang = (d: string) => d.replaceAll('[.]', '.');
 
 const normalise = (d: string) => d.trim().toLowerCase().replace(/\.$/, '');
-const DOMAIN = /^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/;
+export const DOMAIN = /^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/;
 const UNKNOWN: Intel = { vt: 'unknown', urlhaus: 'unknown' };
 // shortcut: per-isolate Map, lost on cold start; fine for a demo, move to Turso/KV if quota bites.
 const cache = new Map<string, Intel>();

@@ -41,6 +41,7 @@ bad(['Asha\nCall me', 'MCB', 'high risk'], 'newline');
 bad(['Asha\tx', 'MCB', 'high risk'], 'tab');
 bad(['Asha', 'https://mcb-secure.com', 'high risk'], 'URL');
 bad(['Asha', 'www.mcb-secure', 'high risk'], 'www');
+bad(['Asha', 'evil[.]com', 'high risk'], 'defanged');
 bad(['Asha', 'mcb-secure.com', 'high risk'], 'bare domain');
 bad(['Asha', 'my.t', 'high risk'], 'one-letter TLD still looks like a domain');
 bad(['A'.repeat(31), 'MCB', 'high risk'], 'name over 30');

@@ -1,7 +1,7 @@
 // Server-only. Community reports (PLAN §5, D9, D12, D13): Turso `reports` table, in-memory fallback.
 import { DISTRICTS, INSTITUTIONS, VECTORS } from '../shared/types.ts';
 import { redact } from './redact.ts';
-import { SHARED_HOSTS, refang } from './threat-intel.ts';
+import { DOMAIN, SHARED_HOSTS, refang } from './threat-intel.ts';
 import { Level } from './verdict.ts';
 
 export type ReportRow = {
@@ -25,7 +25,6 @@ const OFFICIAL = new Set(['mcb.mu', 'sbmgroup.mu', 'mauritiuspost.mu', 'ceb.mu',
 const SHORTENERS = new Set(['bit.ly', 'tinyurl.com', 't.ly', 'cutt.ly', 'rb.gy', 'is.gd', 'shorturl.at']);
 // shortcut: tiny public-suffix list (incl. per-tenant hosts, PLAN §3.2); add suffixes as they show up or use a PSL package.
 const TWO_LEVEL = /\.(?:(?:gov|com|org|net|ac|co)\.mu|co\.uk|org\.uk|ac\.uk|com\.au|co\.za|co\.in|workers\.dev|pages\.dev|r2\.dev|vercel\.app|netlify\.app|github\.io)$/;
-const DOMAIN = /^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$/;
 
 export function registrableDomain(host: string) {
   const labels = host.split('.');
