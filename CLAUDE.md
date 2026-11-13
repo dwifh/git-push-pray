@@ -34,9 +34,9 @@ There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety
 - **Monotonic verdict**: untrusted content can raise risk, never lower it. Code owns the floor; models only add.
 - **Redact before egress**: no raw message, email body, phone number, card/account number, NIC or OTP reaches an LLM, a log, or the Feed. Raw text is never logged.
 - **Never fetch untrusted URLs** (no previews, no redirect expansion, no HEAD). Threat intel is looked up by domain only; full URLs are never submitted to VirusTotal.
-- **Allowlisted official domains** can never be flagged by community reports.
+- **Allowlisted official domains** and known URL shorteners can never be flagged by community reports.
 - Secrets (`OPENROUTER_API_KEY`, `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `TURSO_*`, `HASH_SALT`) live only in `src/lib/` (server-only) and EAS env; nothing secret in `EXPO_PUBLIC_*`. Client-safe shared logic lives in `src/shared/`.
-- Every API route: rate limit (`ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE`, `ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE`) → validate input (type, length) → try/catch with a friendly error.
+- Every API route (except the static `/api/health` liveness probe, which has no input): rate limit (`ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE`, `ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE`) → validate input (type, length) → try/catch with a friendly error.
 - WhatsApp sends: only approved templates by name from a server-side allowlist; every Graph API call carries `appsecret_proof` (HMAC-SHA256 of `WHATSAPP_TOKEN` keyed with `WHATSAPP_APP_SECRET`); template variables are redacted, single-line, length-capped and **never contain a URL** (we never spread a scam link). Strict per-IP rate limit on `/api/alert`.
 - The trusted contact number lives in device `localStorage`; the server receives it per request to send, and never stores or logs it.
 - Every WhatsApp send has a device-side fallback (`wa.me` pre-filled link). Other actions are links too (`tel:`, MAUCORS URL).

@@ -10,7 +10,7 @@ As of 2026-11-13. **Step 0 is done; next is step 1.**
 - WhatsApp templates: drafted in `docs/WHATSAPP-TEMPLATES.md`, not yet approved by Meta. Keep `WHATSAPP_TEMPLATE_MODE=test`.
 - Team split and dataset plan: `docs/TEAM-PLAN.md`.
 - Git: work on local branch `Ayush`, which tracks `origin/features-Ayush`. Never push to `main`; merge through a PR.
-- Step 1 needs `allowImportingTsExtensions: true` in `tsconfig.json` and `@types/node` (dev) so `tsc` accepts the `*.test.ts` files. Node 22.20 runs them directly.
+- `tsconfig.json` has `allowImportingTsExtensions: true`; step 1 still needs `@types/node` (dev) so `tsc` accepts the `*.test.ts` files. Node 22.20 runs them directly.
 
 ## 1. Locked decisions
 
@@ -24,7 +24,7 @@ As of 2026-11-13. **Step 0 is done; next is step 1.**
 | D6 | Threat intel: VirusTotal **domain** lookup + URLhaus host lookup, cached in memory. No AbuseIPDB, no PhishTank. Server never fetches untrusted URLs. |
 | D7 | Regex redaction with typed placeholders; sender stored as a salted hash; regex misses names, so say that openly instead of claiming full DPA 2017 compliance. |
 | D8 | Models: Jev (Tier 1) + one Sonnet call (Tier 3) per scan. No Nemotron. Feed clustering uses no LLM. |
-| D9 | Community reports: official-domain allowlist is immune; a domain counts towards `HIGH_RISK` only with ≥3 distinct reporter hashes; 1–2 reporters → at most `SUSPICIOUS`. No accounts. |
+| D9 | Community reports: official-domain allowlist and known URL shorteners are immune (one bad `bit.ly` link must not taint every `bit.ly` link); a domain counts towards `HIGH_RISK` only with ≥3 distinct reporter hashes; 1–2 reporters → at most `SUSPICIOUS`. No accounts. |
 | D10 | Trusted contact stored in device `localStorage`; sent to `/api/alert` per request, never stored or logged server-side. WhatsApp template send first, `wa.me` link as fallback. All other actions are device-side links. |
 | D11 | The old emergency-safety app is **deleted**: `/api/agent`, emergency/cyclone/flood KB entries, emergency `SIGNALS`/`CLARIFY`, Nemotron/flint constants, the tool loop. |
 | D12 **(default)** | Storage: Turso (`@libsql/client/web`, HTTP, Workers-safe), one `reports` table. If `TURSO_*` env is missing, fall back to an in-memory store on `globalThis` pre-filled with demo reports. |
@@ -47,7 +47,7 @@ Server-only (`src/lib/`, may read secrets):
 | `threat-intel.ts` | `checkDomain(domain) → { vt, urlhaus }` with 3s timeouts, per-domain cache, `unknown` on failure. |
 | `rag.ts` | `searchKnowledgeBase(query, k)` — ported. |
 | `reports.ts` | `addReport`, `countReporters(domain)`, `trending()` — Turso or in-memory. |
-| `rate-limit.ts` | Ported as-is. |
+| `rate-limit.ts` | Ported; `allowRequest(route, ip)` keeps per-user and global buckets per route. |
 | `whatsapp.ts` | `TEMPLATES` allowlist (name → variable count + max lengths), `buildTemplatePayload(name, to, vars)` (pure, validates), `appsecretProof()`, `sendTemplate(name, to, vars)`. |
 | `email.ts` | `parseHeaders(raw) → facts`. Pure. |
 | `scan-pipeline.ts` | `runScanPipeline({ text, sender?, emailFacts? })`. |
@@ -66,29 +66,29 @@ Screens (`src/app/`, tabs): `index.tsx` Scan, `coach.tsx`, `feed.tsx`, `email.ts
 ## 3. Scan pipeline detail
 
 ### 3.1 Redaction (`redact.ts`)
-Replace, in this order (most specific first):
-- Card / bank account numbers (13–19 digits with optional spaces/dashes) → `[CARD]`
-- Mauritian NIC (14 chars: letter + 12 digits + letter; verify format) → `[NIC]`
-- Emails → `[EMAIL]`
-- Phone numbers → `[PHONE +230]` / `[PHONE +<cc>]` / `[PHONE]` (keep the country code only, as a signal)
-- Standalone 4–8 digit codes → `[CODE]`
-- URLs: keep scheme + host + path, drop the query string and fragment.
+1. **URLs first**, so digits or `@` inside a host are never redacted (`mcb-secure-2024.com` must not become `mcb-secure-[CODE].com`). Match `http(s)://` URLs and bare domains (not preceded by `@`); drop userinfo, query string and fragment; swap each `scheme://host` (or bare host) for a sentinel and restore it at the end. The path stays in place and goes through step 2 (it can carry an account number).
+2. Then replace, in this order (most specific first):
+   - Card / bank account numbers (13–19 digits with optional spaces/dashes) → `[CARD]`
+   - Mauritian NIC (14 chars: letter + 12 digits + letter; verify format) → `[NIC]`
+   - Emails → `[EMAIL]`
+   - Phone numbers → `[PHONE +230]` / `[PHONE +<cc>]` / `[PHONE]` (keep the country code only, as a signal)
+   - Standalone 4–8 digit codes → `[CODE]`
 
-`senderHash = sha256(HASH_SALT + normalizedSender)` via Web Crypto. Tests must prove each placeholder and that URL hosts survive.
+`senderHash = sha256(HASH_SALT + normalizedSender)` via Web Crypto. Tests must prove each placeholder and that URL hosts survive: `https://mcb-secure-2024.com/login?otp=123456` keeps `https://mcb-secure-2024.com/login`, bare `mcb-secure-2024.com` stays intact, and `http://mcb.mu@evil.com` keeps `evil.com`.
 
 ### 3.2 Rules (`rules.ts`) — the floor
 `HIGH_RISK` if any:
 - VirusTotal `last_analysis_stats.malicious >= 2`, or URLhaus lists the host.
-- A domain is a lookalike of an allowlisted brand (contains the brand token or its homoglyph form, e.g. `mcb-secure.com`, `rnauritiuspost.com`, any `xn--` host) and is not allowlisted.
+- A domain is a lookalike of an allowlisted brand and is not allowlisted: a brand token (or its homoglyph form) equals a **whole** dot- or hyphen-separated part of the host, never a substring (`mcb-secure.com`, `mcb.mu.evil.com`, `rnauritiuspost.com` → `mauritiuspost.com` match; `cebupacific.com`, `smcb.org` do not), or the host has an `xn--` label.
 - Asks for a credential (OTP / PIN / password / card / CVV) **and** contains a link or a phone number to call back.
-- ≥3 distinct reporters on the domain (allowlisted domains excluded).
+- ≥3 distinct reporters on the domain (allowlisted domains and URL shorteners excluded).
 
 `SUSPICIOUS` if any:
 - URL shortener (`bit.ly`, `tinyurl.com`, `t.ly`, `cutt.ly`, `rb.gy`, `is.gd`, `shorturl.at`) — "shortened link hides where it goes".
 - VirusTotal `malicious == 1` or `suspicious >= 1`.
 - Credential request, payment / fee request, or urgency / threat wording ("within 24 hours", "account blocked", "disconnected", "arrest").
 - RAG top match score ≥ `RAG_MATCH_THRESHOLD` (start at 0.55; calibrate on the demo messages).
-- 1–2 community reporters on the domain.
+- 1–2 community reporters on the domain (allowlisted domains and URL shorteners excluded).
 
 Otherwise `SAFE`. Each triggered rule adds one plain-English flag.
 
@@ -105,7 +105,7 @@ One Decisions call. Scam `SIGNALS` (noisy-OR weights):
 
 Plus `isFragment` (noul) and `missingField` (choice: `sender`, `link`, `full_text`, `none`), and for email only `importance` (choice: `URGENT`, `ROUTINE`, `PROMOTIONAL`).
 
-- Score ≥ 0.6 → `SUSPICIOUS`; ≥ 0.85 → `HIGH_RISK`. A missing signal counts as 1 (fail-closed), so Jev unavailable → `SUSPICIOUS` floor contribution; show a flag "Automatic check incomplete".
+- Score ≥ 0.6 → `SUSPICIOUS`; ≥ 0.85 → `HIGH_RISK`. If the Jev call fails (error, timeout, bad shape) the pipeline adds **no** Jev level: the verdict is max(rule floor, Claude), with a flag "Automatic check incomplete". A signal missing from Jev's answer counts as 0 (Jev can only add risk); a present but non-finite probability (NaN) counts as 1 (fail closed).
 - Clarify (return the question, skip Claude) only if `isFragment >= 0.5`, `missingField != none`, and the rule floor `< HIGH_RISK`. Questions: "Who sent this? Add the number or name shown." / "Please paste the whole message, including any link."
 
 ### 3.4 Claude (Tier 3)
@@ -122,11 +122,11 @@ Plus `isFragment` (noul) and `missingField` (choice: `sender`, `link`, `full_tex
 - Questions (one per screen, YES / NO / NOT SURE buttons; NOT SURE = 0.5):
   1. Are they asking for an OTP, PIN or password? (weight 1.0 — YES alone → HANG UP)
   2. Are they asking you to pay or move money right now? (0.8)
-  3. Do they say they are Police, your bank, or a government office? (0.6)
+  3. Do they say they are Police, your bank, or a government office? (0.4 — a claim alone is not a scam; real banks and Police do call)
   4. Are they rushing you or telling you not to tell anyone? (0.6)
   5. Do they say a family member is in trouble? (0.6)
   6. Did they ask you to install an app or open a link? (0.8)
-- `coachScore` = noisy-OR; ≥ `HANG_UP_CUTOFF` (0.6) → full-screen red "HANG UP NOW — THIS IS A SCAM", then: **alert trusted contact** (`call_alert` template via `/api/alert`, fallback `wa.me` pre-filled), call trusted contact (`tel:`), call Police 999, call your bank using the number on your card.
+- `coachScore` = noisy-OR `1 − Π(1 − weight·answer)`; ≥ `HANG_UP_CUTOFF` (0.75). Check: claim alone 0.4 → no; claim + rushing 1 − 0.6·0.4 = 0.76 → yes; claim + money 1 − 0.6·0.2 = 0.88 → yes; OTP/PIN alone 1.0 → yes; any two NOT SUREs ≤ 1 − 0.5·0.6 = 0.70 → no. Coach tests assert these five cases. Above the cutoff → full-screen red "HANG UP NOW — THIS IS A SCAM", then: **alert trusted contact** (`call_alert` template via `/api/alert`, fallback `wa.me` pre-filled), call trusted contact (`tel:`), call Police 999, call your bank using the number on your card.
 - The HANG UP screen renders from on-device scoring alone; the WhatsApp alert is a button, so a network failure never blocks the warning.
 - Short-circuit: question 1 YES ends the questionnaire immediately.
 - Optional free-text box → `/api/coach` → redact → one Jev call with the same scam signals → can only raise the score.
@@ -135,9 +135,9 @@ Plus `isFragment` (noul) and `missingField` (choice: `sender`, `link`, `full_tex
 ## 5. Scam Feed
 - `reports` table: `id TEXT PK, created_at INTEGER, institution TEXT, vector TEXT, district TEXT, domain TEXT NULL, snippet TEXT (redacted, ≤ 280), reporter_hash TEXT`.
 - Enums: institution `MCB | SBM | MAURITIUS_POST | CEB | CWA | MRA | EMTEL | MYT | POLICE | OTHER`; vector `SMS | WHATSAPP | CALL | EMAIL`; district `PORT_LOUIS | PAMPLEMOUSSES | RIVIERE_DU_REMPART | FLACQ | GRAND_PORT | SAVANNE | PLAINES_WILHEMS | MOKA | BLACK_RIVER | RODRIGUES`.
-- POST validation: enums only, domain normalised by `registrableDomain` and rejected if allowlisted, snippet passed through `redact`, rate-limited. `reporter_hash` = salted hash of the client IP (`cf-connecting-ip`).
+- POST validation: enums only, domain normalised by `registrableDomain` and rejected if allowlisted; a URL-shortener domain is stored as `NULL` (the report still counts by institution, never against `bit.ly`); snippet passed through `redact`, rate-limited. `reporter_hash` = salted hash of the client IP (`cf-connecting-ip`).
 - GET `trending`: last 7 days, grouped by institution (and by district), counts + top domains. Render as a ranked list with simple bars; no graph library.
-- Seed 15–25 demo reports so the Feed is not empty on stage.
+- Seed 15–25 demo reports so the Feed is not empty on stage, including 2 on the demo-step-2 domain `parcel-track-mu.com` with distinct seeded `reporter_hash` values (one phone on stage is only one reporter).
 
 ## 6. Email Guard
 - Input: raw headers or full `.eml` text, ≤ 100 KB. Parse only headers + first `text/plain` part (no attachment decoding, no HTML rendering).
@@ -149,7 +149,7 @@ Plus `isFragment` (noul) and `missingField` (choice: `sender`, `link`, `full_tex
 ## 7. WhatsApp alerts (outbound only)
 
 ### 7.1 Sending
-- `POST https://graph.facebook.com/v{N}/{WHATSAPP_PHONE_NUMBER_ID}/messages?appsecret_proof=<hex>` with `Authorization: Bearer WHATSAPP_TOKEN`, body `{ messaging_product: "whatsapp", to, type: "template", template: { name, language: { code: "en" }, components: [{ type: "body", parameters: [{ type: "text", text }] }] } }`. Check the current Graph API version.
+- `POST https://graph.facebook.com/v{N}/{WHATSAPP_PHONE_NUMBER_ID}/messages?appsecret_proof=<hex>` with `Authorization: Bearer WHATSAPP_TOKEN`, body `{ messaging_product: "whatsapp", to, type: "template", template: { name, language: { code: "en" }, components: [{ type: "body", parameters: [{ type: "text", text }] }] } }`. In test mode the template is `{ name: "hello_world", language: { code: "en_US" } }` with **no** `components` (Meta's `hello_world` exists only in `en_US` and takes no parameters). Check the current Graph API version.
 - `appsecret_proof` = hex HMAC-SHA256 of `WHATSAPP_TOKEN` keyed with `WHATSAPP_APP_SECRET` (Web Crypto).
 - `/api/alert` order: rate limit (strict: 3 per IP per minute) → validate `template` is in `TEMPLATES` → validate `to` as E.164 digits (8–15) → validate each var (string, no newline/tab, no `http`, `www.` or domain-looking token, ≤ the template's max length) → `sendTemplate` with a 5s timeout. Return `{ sent: true }` or `{ sent: false, fallback: "wa.me" }`; the client opens the `wa.me` fallback on `sent: false`.
 - Template name `hello_world` (Meta's pre-approved test template, no variables) is in `TEMPLATES` until our own templates are approved; set `WHATSAPP_TEMPLATE_MODE=test` to route every alert to it.
@@ -176,7 +176,7 @@ WHATSAPP_APP_SECRET=
 WHATSAPP_TEMPLATE_MODE=test   # "test" → hello_world; "live" → our approved templates
 TURSO_DATABASE_URL=
 TURSO_AUTH_TOKEN=
-HASH_SALT=                    # generate: node -e "console.log(crypto.randomBytes(32).toString('hex'))"
+HASH_SALT=                    # generate: npm run salt (writes .env, never prints the value)
 ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE=10
 ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE=60
 ```
@@ -186,7 +186,7 @@ Already obtained by the team: OpenRouter, VirusTotal, URLhaus, Turso URL + token
 Each step ends when its completion criterion is observably true. Do not start the next step before that.
 
 0. **(DONE 2026-11-13) Skeleton + deploy + templates.** Delete the old app (D11). Tabs: Scan, Coach, Feed, Email. `health+api.ts`. Deploy with `eas deploy` and push the env keys to EAS. Write `docs/WHATSAPP-TEMPLATES.md` (§7.2). *Done when* the deployed `/api/health` returns 200 and the template specs are handed to the team to submit (approval runs in parallel with the build).
-1. **Pure modules, test-first** (`/tdd`): `redact`, `extract`, `rules`, `verdict`, `scam-signals`, `coach`, `email`, `whatsapp.buildTemplatePayload`, ported `rate-limit`. *Done when* `npm test` is green and covers: every placeholder; lookalike vs allowlist; monotonic max (a lower model verdict never lowers the floor); Jev-missing fail-closed; coach short-circuit; template payload rejects an unknown template, a URL/domain in a variable, a newline, an over-length variable and a non-E.164 number; allowlisted domain refused as a report.
+1. **Pure modules, test-first** (`/tdd`): `redact`, `extract`, `rules`, `verdict`, `scam-signals`, `coach`, `email`, `whatsapp.buildTemplatePayload`, ported `rate-limit`. *Done when* `npm test` is green and covers: every placeholder; URL hosts survive redaction; lookalike vs allowlist (`mcb-secure-login.com` flagged, `cebupacific.com` not); monotonic max (a lower model verdict never lowers the floor); a failed Jev call adds no level and a NaN Jev probability fails closed; coach short-circuit and the §4 cutoff cases; per-route rate-limit buckets; template payload rejects an unknown template, a URL/domain in a variable, a newline, an over-length variable and a non-E.164 number; allowlisted domain refused as a report; shortener reports never count towards a domain.
 2. **Threat intel + RAG.** `threat-intel.ts`, rewrite KB, `npm run seed`. *Done when* a script call on a known-bad test domain and a known-good domain returns the right intel, and a forced timeout returns `unknown` without throwing.
 3. **Scan pipeline + `/api/scan`.** *Done when* the three demo messages (below) return the expected verdicts locally, and with `OPENROUTER_API_KEY` blanked the route still returns a rule-based verdict.
 4. **Scan screen.** *Done when* a phone-width browser shows verdict colour, flags, advice and working action links.
@@ -198,7 +198,7 @@ Each step ends when its completion criterion is observably true. Do not start th
 
 ## 11. Demo script
 1. Paste fake MCB "account blocked, confirm OTP at mcb-secure-login.com" → `HIGH_RISK` (lookalike + credential + link).
-2. Paste Mauritius Post "parcel held, pay Rs 75 at bit.ly/…" → `SUSPICIOUS` → report it ×3 from the Feed → rescan → `HIGH_RISK` (community zero-day).
+2. Paste Mauritius Post "parcel held, pay Rs 75 at parcel-track-mu.com/pay" → `SUSPICIOUS` (2 seeded reporters already on the domain) → report it once from the Feed (3rd distinct reporter) → rescan → `HIGH_RISK` (community zero-day). Not a shortener: shortener reports never escalate.
 3. Paste a genuine CEB scheduled-outage notice → "No known scam signs found".
 4. On message 1's result, tap **Warn family** → the trusted contact's phone receives the `scam_warning` WhatsApp alert.
 5. Coach: "Police say my son is arrested, pay a fine now" → HANG UP screen → **Alert trusted contact** → `call_alert` arrives on the family member's phone.
