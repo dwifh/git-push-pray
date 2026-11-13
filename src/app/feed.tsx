@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ReportForm } from '@/components/ReportForm';
 import { FONT, useTheme } from '@/components/theme';
@@ -14,19 +14,17 @@ export default function Feed() {
   const [data, setData] = useState<Trending>();
   const [error, setError] = useState('');
   const [reporting, setReporting] = useState(false);
-  const lastLoad = useRef(0);
-  // /api/reports allows 10 loads a minute, so tab switches reuse anything loaded in the last 30 s.
-  const load = useCallback((force = false) => {
-    if (!force && Date.now() - lastLoad.current < 30_000) return;
-    lastLoad.current = Date.now();
+  const load = useCallback(() => {
+    let live = true;
     api<unknown>('/api/reports')
-      .then((d) => { setData(toTrending(d)); setError(''); })
-      .catch((e: Error) => setError(e.message));
+      .then((d) => { if (live) { setData(toTrending(d)); setError(''); } })
+      .catch((e: Error) => { if (live) setError(e.message); });
+    return () => { live = false; };
   }, []);
-  // Reloads when the tab is opened, so a report sent from the Coach shows up.
-  useFocusEffect(useCallback(() => load(), [load]));
+  // Reloads each time the tab is opened, so a report sent from the Coach shows up.
+  useFocusEffect(load);
 
-  if (reporting) return <ReportForm onDone={(sent) => { setReporting(false); if (sent) load(true); }} />;
+  if (reporting) return <ReportForm onDone={(sent) => { setReporting(false); if (sent) load(); }} />;
 
   const top = data?.byInstitution[0];
   const total = data?.byInstitution.reduce((n, r) => n + r.count, 0) ?? 0;
@@ -40,12 +38,10 @@ export default function Feed() {
         {data && <Pill label="Live" icon="ellipse" color={t.orange} fg={t.onOrange} />}
       </View>
 
-      {/* A failed refresh keeps the last feed on screen; only a first load shows the full error card. */}
-      {error && data && <ErrorText>Could not refresh. Showing the last update.</ErrorText>}
-      {error && !data ? (
+      {error ? (
         <Card accent={t.orange}>
           <ErrorText>{error}</ErrorText>
-          <Button label="Try again" kind="ghost" icon="refresh" onPress={() => { setError(''); load(true); }} />
+          <Button label="Try again" kind="ghost" icon="refresh" onPress={() => { setError(''); load(); }} />
         </Card>
       ) : !data ? (
         <ActivityIndicator size="large" color={t.teal} accessibilityLabel="Loading the feed" style={{ padding: 40 }} />
