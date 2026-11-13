@@ -46,7 +46,15 @@ There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety
 - Elder-first: large text, high contrast, one decision per screen, big tap targets.
 - English only.
 
+## Deploy (EAS Hosting)
+- `npx expo export -p web` then `npx eas-cli@latest deploy --prod --environment production` → https://scamguard.expo.app.
+- Server env comes from EAS at deploy time, not from `.env`. After changing a key: `npx eas-cli@latest env:set --name K --value V --environment production --visibility sensitive --non-interactive` (no `--force` flag), then redeploy. Hosting cannot read `secret` visibility; use `sensitive`. Never print env values.
+- EAS login from this terminal: `eas login --device --non-interactive` (interactive prompts fail here).
+- Tabs come from `expo-router/js-tabs`; importing `Tabs` from `expo-router` is deprecated.
+
 ## Workflow
+- Docs: `docs/PLAN.md` (§0 status, decisions, build order), `docs/PORTED-CODE.md`, `docs/TEAM-PLAN.md` (who owns what, API contract, datasets), `docs/WHATSAPP-TEMPLATES.md`.
+- Work one PLAN §10 step at a time. At the end of each step, show that its *Done when* criterion is met, update PLAN §0, and wait for the go-ahead.
 - Ponytail (minimal diffs). `/tdd` for every pure module in `src/lib/` and `src/shared/`. `npm test` runs the node-assert self-checks. `/ponytail-review` before the demo.
 - Edit `data/knowledge-base.json`, then `npm run seed` to regenerate `data/knowledge-vectors.json`.
 - Knowledge-base content and allowlisted domains are unverified until a teammate checks them against official sources; never present them as official.

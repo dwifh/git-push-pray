@@ -2,6 +2,16 @@
 
 Locked by two `/grill-me` rounds on 2026-11-13. Items marked **(default)** were not grilled explicitly; they are the recommended choice and the team can veto them.
 
+## 0. Status (update at the end of every step)
+
+As of 2026-11-13. **Step 0 is done; next is step 1.**
+- Live: https://scamguard.expo.app (`/api/health` → 200). EAS project `@dwifh/hackathon-app`, linked in `app.json`.
+- All 12 env keys from §9 are set in EAS `production` as **sensitive**. `.env` is complete locally, `HASH_SALT` included (`npm run salt` creates it).
+- WhatsApp templates: drafted in `docs/WHATSAPP-TEMPLATES.md`, not yet approved by Meta. Keep `WHATSAPP_TEMPLATE_MODE=test`.
+- Team split and dataset plan: `docs/TEAM-PLAN.md`.
+- Git: work on local branch `Ayush`, which tracks `origin/features-Ayush`. Never push to `main`; merge through a PR.
+- Step 1 needs `allowImportingTsExtensions: true` in `tsconfig.json` and `@types/node` (dev) so `tsc` accepts the `*.test.ts` files. Node 22.20 runs them directly.
+
 ## 1. Locked decisions
 
 | # | Decision |
@@ -175,7 +185,7 @@ Already obtained by the team: OpenRouter, VirusTotal, URLhaus, Turso URL + token
 ## 10. Build order
 Each step ends when its completion criterion is observably true. Do not start the next step before that.
 
-0. **Skeleton + deploy + templates.** Delete the old app (D11). Tabs: Scan, Coach, Feed, Email. `health+api.ts`. Deploy with `eas deploy` and push the env keys to EAS. Write `docs/WHATSAPP-TEMPLATES.md` (§7.2). *Done when* the deployed `/api/health` returns 200 and the template specs are handed to the team to submit (approval runs in parallel with the build).
+0. **(DONE 2026-11-13) Skeleton + deploy + templates.** Delete the old app (D11). Tabs: Scan, Coach, Feed, Email. `health+api.ts`. Deploy with `eas deploy` and push the env keys to EAS. Write `docs/WHATSAPP-TEMPLATES.md` (§7.2). *Done when* the deployed `/api/health` returns 200 and the template specs are handed to the team to submit (approval runs in parallel with the build).
 1. **Pure modules, test-first** (`/tdd`): `redact`, `extract`, `rules`, `verdict`, `scam-signals`, `coach`, `email`, `whatsapp.buildTemplatePayload`, ported `rate-limit`. *Done when* `npm test` is green and covers: every placeholder; lookalike vs allowlist; monotonic max (a lower model verdict never lowers the floor); Jev-missing fail-closed; coach short-circuit; template payload rejects an unknown template, a URL/domain in a variable, a newline, an over-length variable and a non-E.164 number; allowlisted domain refused as a report.
 2. **Threat intel + RAG.** `threat-intel.ts`, rewrite KB, `npm run seed`. *Done when* a script call on a known-bad test domain and a known-good domain returns the right intel, and a forced timeout returns `unknown` without throwing.
 3. **Scan pipeline + `/api/scan`.** *Done when* the three demo messages (below) return the expected verdicts locally, and with `OPENROUTER_API_KEY` blanked the route still returns a rule-based verdict.
