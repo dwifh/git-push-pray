@@ -6,10 +6,10 @@ Updated 2026-11-13 (evening). Step 0 is live, and calibrated model routing (PLAN
 
 | Owner | Role | Done so far | Next, in order | Done when |
 |---|---|---|---|---|
-| **Ayush** | **Backend 1** — pipeline | `calibration`, `verdict`, `scam-signals`, `redact` (all tested), `jev.ts`, `claude.ts`, `npm run eval`, DIFrauD set, `calibration.json`, URL eval set (`npm run build-url-data`) | 1. **`src/shared/types.ts` + the §3 contract (unblocks both frontends: do it first).** 2. Step 1, test-first: `redact` `senderHash`, `extract` (with `isShortener`, `isSharedHost`, `lookalikeOf`), `rules`, `email.ts`. 3. `npm run eval -- rules`: lookalike false positives on `data/eval/domains.jsonl` must be 0 (`facebook.net`, `symcb.com`, `sonicwall.com` are the traps). 4. `scan-pipeline` + `/api/scan` using `loadCalibration`; re-record and re-calibrate with real evidence in the Claude prompt. 5. `/api/email` | Demo messages 1–3 get the expected verdicts; the §5 pass bar holds on the test split with rules on |
-| **Rushil** | **Backend 2** — data + integrations | — | 1. **Mauritius test set, first 30 messages** (§5 priority 1), appended to `data/eval/messages.jsonl`. 2. Step 1 pure parts: port `rate-limit`, `whatsapp.buildTemplatePayload` (test-first). 3. Step 2: `threat-intel.ts` (VirusTotal domain + URLhaus host, 3 s timeout, cache, `SHARED_HOSTS` cap from PLAN §3.2), KB rewrite + `npm run seed`, `rag.ts`. Check intel against `data/eval/domains.jsonl` (undo the `[.]` defanging in code). 4. `reports` (Turso) + `/api/reports`, `/api/coach`, `/api/alert`; chase Meta template approval | Step 2 criterion met; a third distinct reporter lifts a domain to `HIGH_RISK`; `hello_world` arrives in test mode |
-| **Jasveer** | **Frontend 1** — Scan + Email | Pulled Tranco top-1M + URLhaus lists (`feature-jasveer`) | 1. **Do not merge `feature-jasveer` into `main`** (see below); reset it to `main`. 2. Scan screen against mocks, every state: loading, `SAFE` ("No known scam signs found"), `SUSPICIOUS`, `HIGH_RISK`, clarify question, 400 / 429 / 502. 3. Verdict card, flags, advice, action links, **Warn family**. 4. Email Guard screen + quarantine card | A phone-width browser shows every verdict, the clarify question and errors; links open |
-| **Anjali** | **Frontend 2** — Coach + Feed | — | 1. `src/shared/coach.ts` + `coach.test.ts` (test-first: the five PLAN §4 cutoff cases + 12 call scenarios). 2. Coach flow, HANG UP screen, trusted-contact settings. 3. Shared `sendAlert()` with the `wa.me` fallback. 4. Feed screen + report form against mocks | The fake-police scenario reaches HANG UP with the network off |
+| **Ayush** | **Backend 1** — pipeline | `types.ts` contract, step 1 modules, `npm run eval` (`rules`/`record`/`calibrate`), `scan-pipeline` + `/api/scan`, `/api/email` (all tested; PLAN §0). **Helping Hands backend (2026-11-14, with Rushil's part):** `help.ts`, `/api/help`, `help_request` wording, `askHelper()` (PLAN §7.3) | 1. Deploy and check Helping Hands on the live URL with two phones (PLAN §10 step 8b). 2. §5 pass bar: still FAIL (2/77 scams `SAFE`, 21.4% genuine above `SAFE`); team to decide whether to keep pushing or accept it for the demo. 3. Step 9 rehearsal | Demo messages 1–3 get the expected verdicts; the §5 pass bar holds on the test split with rules on |
+| **Rushil** | **Backend 2** — data + integrations | Mauritius test set (80), `rate-limit`, `whatsapp`, `messages`, `threat-intel`, KB + `rag`, `reports` + `/api/reports`, `/api/coach`, `/api/alert`, `sendAlert()`, live WhatsApp in `text` mode. `help_request` template + `askHelper()` done by Ayush on 2026-11-14 | Submit `help_request` to Meta (`docs/WHATSAPP-TEMPLATES.md` §3); make sure the helper phone messages the business number within 24 h of the demo. | Step 2 criterion met; a third distinct reporter lifts a domain to `HIGH_RISK`; `hello_world` arrives in test mode |
+| **Jasveer** | **Frontend 1** — Scan + Email | Pulled Tranco top-1M + URLhaus lists (`feature-jasveer`) | 1. **Do not merge `feature-jasveer` into `main`** (see below); reset it to `main`. 2. Scan screen against mocks, every state: loading, `SAFE` ("No known scam signs found"), `SUSPICIOUS`, `HIGH_RISK`, clarify question, 400 / 429 / 502. 3. Verdict card, flags, advice, action links, **Warn family**. 4. Email Guard screen + quarantine card. 5. **Helping Hands** (PLAN §7.3): **Ask <helper> to check** on the scan result via `askHelper()`, waiting state + polling + "<helper> says: …"; the **Helper** tab (enter code → verdict card → three answers) | A phone-width browser shows every verdict, the clarify question and errors; links open; a code typed on a second phone shows that message and the answer comes back |
+| **Anjali** | **Frontend 2** — Coach + Feed | — | 1. `src/shared/coach.ts` + `coach.test.ts` (test-first: the five PLAN §4 cutoff cases + 12 call scenarios). 2. Coach flow, HANG UP screen, trusted-contact settings. 3. Shared `sendAlert()` with the `wa.me` fallback. 4. Feed screen + report form against mocks. 5. **Helping Hands** (PLAN §7.3): first-launch role choice ("I need help" / "I'm helping someone"), helper setup on the elder's phone (helper's name + number, elder's name) and **Elder mode** (huge text, Scan + Coach only); Coach button reads **Alert <helper>** | The fake-police scenario reaches HANG UP with the network off; a helper can set up Elder mode in under a minute |
 
 **About Jasveer's URL lists (checked 2026-11-13).** Useful, but not as raw files in git:
 - Together they are about 60 MB (Tranco 21 MB, URLhaus 38 MB). Windows Defender quarantines files that list live malware hosts, so they would break teammates' checkouts.
@@ -26,7 +26,7 @@ Work on one branch per step, open a PR to `main` and let CI (lint + typecheck + 
 
 ## 3. API contract (frontend ↔ backend)
 
-Backend 1 makes these the real types in `src/shared/types.ts`. Any change is announced in the team chat before it merges. Every error is `{ error: string }` with status 400 (bad input), 429 (rate limit) or 502 (upstream down).
+Backend 1 makes these the real types in `src/shared/types.ts`. Any change is announced in the team chat before it merges. Every error is `{ error: string }` with status 400 (bad input), 429 (rate limit) or 502 (upstream down); `/api/help` adds 404 (code expired or unknown) and 409 (already answered).
 
 | Route | Request | Response |
 |---|---|---|
@@ -35,7 +35,11 @@ Backend 1 makes these the real types in `src/shared/types.ts`. Any change is ann
 | `POST /api/coach` | `{ text }` | `{ score }` (0–1; the screen takes the max with its own score) |
 | `GET /api/reports` | — | trending: counts by institution and district, top domains, last 7 days |
 | `POST /api/reports` | `{ institution, vector, district, domain?, snippet? }` | `{ ok: true }` |
-| `POST /api/alert` | `{ template, to, vars }` | `{ sent: true }` or `{ sent: false, fallback: "wa.me" }` |
+| `POST /api/alert` | `{ template, to, vars }` (`call_alert` or `scam_warning` only) | `{ sent: true }` or `{ sent: false, fallback: "wa.me" }` |
+| `POST /api/help` | `{ elderName, to, text, sender?, verdict }` (verdict = what the elder saw) | `{ code, token, sent }`; call it through `askHelper()` in `src/shared/alert.ts` |
+| `GET /api/help?code=` | — (helper; 6 digits) | `{ elderName, text, verdict, flags[], advice, reply }` (text redacted; verdict from the server's re-scan, never lower than the elder's) |
+| `GET /api/help?token=` | — (elder; poll every 3 s) | `{ reply: null \| "CALL_YOU" \| "DELETE_IT" \| "GENUINE" }` |
+| `PUT /api/help` | `{ code, reply }` | `{ ok: true }`; 400 for `GENUINE` on `HIGH_RISK`, 409 if already answered |
 | `GET /api/health` | — | 200 |
 
 ## 4. Frontend guide
@@ -58,7 +62,8 @@ Backend 1 makes these the real types in `src/shared/types.ts`. Any change is ann
 **Implementation pointers:**
 - Routes: tabs in `src/app/_layout.tsx`; screens are `index.tsx` (Scan), `coach.tsx`, `feed.tsx` and `email.tsx`. Components go in `src/components/`, never `src/app/`. Check the SDK 58 Expo Router docs before using a navigator API; the `expo-router` skill helps.
 - Calls: `fetch('/api/scan', { method: 'POST', body: JSON.stringify({ text, sender }) })`. Relative URLs work on the web build. On `!res.ok`, show `body.error`.
-- Storage: `trustedContact` (E.164 digits) and `firstName` in `globalThis.localStorage`, every read and write wrapped in `try/catch`.
+- Storage: `trustedContact` (E.164 digits, the helper's number), `firstName`, `helperName` and `role` (`elder` | `helper`) in `globalThis.localStorage`, every read and write wrapped in `try/catch`. Also keep an open help `token` there so a reload keeps polling.
+- Helping Hands screens: PLAN §7.3 step by step. Reply labels come from `HELP_REPLY_LABEL` in `src/shared/types.ts`; hide "It's genuine" on `HIGH_RISK`. Poll `GET /api/help?token=` every 3 s and stop on a reply, a 404 or after 30 min.
 - Links: `Linking.openURL` from `react-native` for `tel:999`, `https://wa.me/<number>?text=<encoded>` and MAUCORS. A `wa.me` text never contains the scam link.
 - The demo is the web PWA. Test in Chrome device mode at 360 × 800. Check that any icon library you use renders on web.
 

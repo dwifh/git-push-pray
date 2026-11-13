@@ -13,7 +13,9 @@ Mobile-first Expo PWA that protects everyday Mauritians, especially elderly peop
 1. **Scam Shield** (deep): paste a message (+ optional sender) in the PWA → verdict `SAFE | SUSPICIOUS | HIGH_RISK` + plain-English red flags + one-tap actions.
 2. **Elder Call Coach** (deep): big-button yes/no questions scored on-device; "HANG UP NOW — THIS IS A SCAM" screen; alert the trusted contact on WhatsApp.
 
-**WhatsApp is outbound only**: the server sends approved message templates through the Meta Graph API (`/api/alert`) to the user's trusted contact. There is no webhook and no inbound WhatsApp scanning.
+**Helping Hands** (hackathon twist, PLAN §7.3, D16): the trusted contact is the **Helper**. One app, two roles: the helper sets up the elder's phone (Elder mode), the elder taps "Ask my helper" on a scan result, the helper enters the WhatsApp'd 6-digit code on their own phone, sees the redacted message + verdict and answers; the answer shows on the elder's screen (`/api/help`). The server re-scans and keeps the higher verdict; the helper's answer never changes the verdict.
+
+**WhatsApp is outbound only**: the server sends approved message templates through the Meta Graph API (`/api/alert`, and `/api/help` for `help_request`) to the user's trusted contact. There is no webhook and no inbound WhatsApp scanning.
 3. **Scam Feed** (shallow): ranked list/bars of active campaigns by institution and district; rate-limited anonymous reports.
 4. **Email Guard** (shallow): paste raw headers/`.eml` → importance (`URGENT | ROUTINE | PROMOTIONAL`) + phishing verdict + human-in-the-loop review card.
 
@@ -42,6 +44,7 @@ There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety
 - Every API route (except the static `/api/health` liveness probe, which has no input): rate limit (`ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE`, `ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE`) → validate input (type, length) → try/catch with a friendly error.
 - WhatsApp sends: only approved templates by name from a server-side allowlist; every Graph API call carries `appsecret_proof` (HMAC-SHA256 of `WHATSAPP_TOKEN` keyed with `WHATSAPP_APP_SECRET`); template variables are redacted, single-line, length-capped and **never contain a URL** (we never spread a scam link). Strict per-IP rate limit on `/api/alert`.
 - The trusted contact number lives in device `localStorage`; the server receives it per request to send, and never stores or logs it.
+- Help requests (`help_requests` table) hold only redacted text, expire after 30 minutes and take one reply; a helper can never mark a `HIGH_RISK` message "genuine". `help_request` is sent only by `/api/help` with a server-made code (`/api/alert` refuses it).
 - Every WhatsApp send has a device-side fallback (`wa.me` pre-filled link). Other actions are links too (`tel:`, MAUCORS URL).
 
 ## UX rules

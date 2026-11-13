@@ -91,7 +91,7 @@ async function withTimeout<T>(run: () => Promise<T>, fallback: T) {
 }
 
 export async function runScanPipeline(
-  input: ScanRequest & { emailFacts?: EmailFacts },
+  input: ScanRequest & { emailFacts?: EmailFacts; atLeast?: Verdict }, // atLeast: a verdict already shown (/api/help); can only raise
   deps: Deps = LIVE_DEPS,
 ): Promise<ScanResult & { importance?: Importance }> {
   const email = input.emailFacts;
@@ -133,7 +133,7 @@ export async function runScanPipeline(
   ].join('\n');
   const claude = clarify ? null : await Promise.resolve().then(() => deps.claude(modelText, evidence)).catch(() => null);
 
-  const level = maxLevel(floor.level, jevLvl, claudeLevel(claude?.verdict ?? null, CAL.claude));
+  const level = maxLevel(floor.level, jevLvl, claudeLevel(claude?.verdict ?? null, CAL.claude), Level[input.atLeast ?? 'SAFE']);
   const verdict = LEVEL_NAME[level];
   const useClaudeText = claude != null && VERDICTS.indexOf(claude.verdict) >= level;
   const incomplete = !jev || (!clarify && !claude);

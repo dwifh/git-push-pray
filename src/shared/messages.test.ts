@@ -29,6 +29,23 @@ You are receiving this because they chose you as their trusted contact in Scam S
 Scam Shield Mauritius safety alert`,
 );
 
+// Helping Hands: the code is the only way in; the message carries no link.
+assert.equal(
+  renderMessage('help_request', ['Nani', '482913']),
+  `Help request
+
+This is a help request from Nani. They would like you to check a message before they reply to it.
+
+Open Scam Shield on your phone, tap Helper and enter this code: 482913
+
+The code works for 30 minutes. Never share it with anyone else, and never click links in the message you are checking.
+
+You are receiving this because they chose you as their trusted contact in Scam Shield.
+
+Scam Shield Mauritius safety alert`,
+);
+assert.throws(() => renderMessage('help_request', ['Nani', '1234567']), Error, 'code over 6 chars');
+
 // One pass: a value that looks like a slot is not filled again.
 assert.match(renderMessage('scam_warning', ['{{2}}', 'MCB', 'high risk']), /family of \{\{2\}\}\./);
 
