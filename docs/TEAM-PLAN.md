@@ -63,11 +63,12 @@ Backend 1 makes these the real types in `src/shared/types.ts`. Any change is ann
 
 ## 5. Backend datasets, by priority
 
-Nothing here trains a model. The data is an **evaluation set**: it checks the regexes and rules, calibrates `RAG_MATCH_THRESHOLD` (starts at 0.55) and shows where Jev or Claude misjudge. Cutoffs fixed in PLAN (Jev 0.6 / 0.85, Coach 0.6) are only changed after the team agrees.
+Nothing here trains a model. The data is an **evaluation set**: it checks the regexes and rules, calibrates `RAG_MATCH_THRESHOLD` (starts at 0.55) and **calibrates model routing** (PLAN §3.6): Jev cutoffs and signal weights, and how far a Claude verdict may raise the level, come from measured AUC and precision. Coach cutoffs stay fixed.
 
 | Priority | Dataset | What it tests | Size to use | How to get it |
 |---|---|---|---|---|
 | **1 — must have** | **Mauritius test set, hand-built** | Every rule, redaction, lookalikes, the demo script, the KB | 80 messages: 50 scams covering the 10 patterns in PLAN §8, 30 genuine (CEB outage notice, bank transaction SMS, Mauritius Post delivery, MRA reminder, family chat) | Collect from MAUCORS phishing/scam pages, Police and bank fraud warnings, local news. Replace every real phone number, name and account number with fake ones of the **same format**, so redaction is still tested |
+| **done** | **DIFrauD** (MIT, LREC-COLING 2024; Cleanlab-cleaned, hand-curated labels): SMS (UCI spam + Mishra & Soni smishing), email phishing, job scams | Model calibration (PLAN §3.6) | 360 messages: 30 scam + 30 genuine per domain, their validation split → our `dev`, their test split → our `test` | `npm run fetch-data` → `data/eval/messages.jsonl` (binary `label`: `scam` / `genuine`). Note: its SMS "deceptive" class includes marketing spam |
 | **2** | Mishra & Soni SMS phishing set (ham / spam / smishing) | False alarms on ordinary SMS; recall on smishing outside Mauritius | Sample 300 (100 per class). Rules-only run on all of it is free; full pipeline on 50 | Mendeley Data (link in §6) |
 | **3** | Domain lists: Tranco top sites (good) + URLhaus recent hosts (bad) | Lookalike rule false positives; step 2 intel criterion | 100 each | Tranco CSV download; URLhaus API with our key |
 | **4** | Email headers, hand-made | D14 rules: `dmarc=fail`, Reply-To mismatch, display-name spoofing | 5 spoofed + 5 real newsletters | Team inboxes ("Show original", headers only, addresses redacted). The SpamAssassin corpus is from 2002–2005, before DMARC existed, so it can only test parsing |
@@ -90,6 +91,7 @@ Nothing here trains a model. The data is an **evaluation set**: it checks the re
 Some links were checked on 2026-11-13; three could not be fetched automatically. Open the ones marked "unverified" in a browser before relying on them.
 
 - MAUCORS (CERT-MU's reporting system): <https://maucors.govmu.org/> — [Phishing](https://maucors.govmu.org/maucors/?page_id=1290), [Online scams and frauds](https://maucors.govmu.org/maucors/?page_id=1248), [News](https://maucors.govmu.org/maucors/?page_id=1543), [Report](https://maucors.govmu.org/maucors/?page_id=9). `cert.govmu.org` did not resolve on 2026-11-13.
+- DIFrauD: <https://huggingface.co/datasets/difraud/difraud> (MIT). Fetched 2026-11-13.
 - Mishra & Soni SMS phishing dataset (Mendeley Data): <https://data.mendeley.com/datasets/f45bkkt8pr/1> — unverified.
 - UCI SMS Spam Collection: <https://archive.ics.uci.edu/dataset/228/sms+spam+collection> — unverified.
 - Tranco list: <https://tranco-list.eu/> — free daily top-1M CSV.
