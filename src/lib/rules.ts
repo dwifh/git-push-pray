@@ -2,6 +2,7 @@
 import { INSTITUTION_LABEL, type DomainIntel } from '../shared/types.ts';
 import type { EmailFacts } from './email.ts';
 import { BRANDS, isReportImmune, isSharedHost, isShortener, lookalikeOf, registrableDomain } from './extract.ts';
+import { intelLevel } from './threat-intel.ts';
 import { Level, maxLevel } from './verdict.ts';
 
 export type RuleFacts = {
@@ -47,11 +48,11 @@ export function ruleFloor(f: RuleFacts): { level: Level; flags: string[] } {
     if (isShortener(d)) add(Level.SUSPICIOUS, 'A shortened link hides where it really goes.');
   }
   for (const i of f.intel ?? []) {
-    const vt = i.vt === 'unknown' ? { malicious: 0, suspicious: 0 } : i.vt;
-    if (vt.malicious >= 2 || i.urlhaus === 'listed') {
-      if (isSharedHost(i.domain)) add(Level.SUSPICIOUS, 'A link goes to a site that hosts files for anyone; one of them was reported as malware.');
-      else add(Level.HIGH_RISK, 'Security services list a link in this message as dangerous.');
-    } else if (vt.malicious === 1 || vt.suspicious >= 1) add(Level.SUSPICIOUS, 'A security service flagged a link in this message.');
+    const lvl = intelLevel(i.domain, i);
+    if (lvl === Level.HIGH_RISK) add(lvl, 'Security services list a link in this message as dangerous.');
+    else if (lvl === Level.SUSPICIOUS && isSharedHost(i.domain))
+      add(lvl, 'A link goes to a site that hosts files for anyone; one of them was reported as malware.');
+    else if (lvl === Level.SUSPICIOUS) add(lvl, 'A security service flagged a link in this message.');
   }
   const reporters = Math.max(0, ...(f.communityReports ?? []).filter((r) => !isReportImmune(r.domain)).map((r) => r.reporters));
   if (reporters >= 3) add(Level.HIGH_RISK, `${reporters} people reported this website as a scam.`);

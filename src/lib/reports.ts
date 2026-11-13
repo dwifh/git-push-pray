@@ -1,8 +1,8 @@
 // Server-only. Community reports (PLAN §5, D9, D12, D13): Turso `reports` table, in-memory fallback.
 import { DISTRICTS, INSTITUTIONS, VECTORS } from '../shared/types.ts';
+import { isAllowlisted, isReportImmune, registrableDomain } from './extract.ts';
 import { redact } from './redact.ts';
-import { DOMAIN, SHARED_HOSTS, refang } from './threat-intel.ts';
-import { Level } from './verdict.ts';
+import { DOMAIN, refang } from './threat-intel.ts';
 
 export type ReportRow = {
   institution: string;
@@ -18,22 +18,6 @@ export type Store = {
   countReporters(domain: string): Promise<number>;
   since(ms: number): Promise<ReportRow[]>;
 };
-
-// shortcut: allowlist, shorteners and registrableDomain live here until extract.ts (step 1) lands; move them there.
-// Unverified official domains: a teammate must check them against official sources (CLAUDE.md).
-const OFFICIAL = new Set(['mcb.mu', 'sbmgroup.mu', 'mauritiuspost.mu', 'ceb.mu', 'govmu.org', 'mra.mu', 'emtel.com', 'myt.mu']);
-const SHORTENERS = new Set(['bit.ly', 'tinyurl.com', 't.ly', 'cutt.ly', 'rb.gy', 'is.gd', 'shorturl.at']);
-// shortcut: tiny public-suffix list (incl. per-tenant hosts, PLAN §3.2); add suffixes as they show up or use a PSL package.
-const TWO_LEVEL = /\.(?:(?:gov|com|org|net|ac|co)\.mu|co\.uk|org\.uk|ac\.uk|com\.au|co\.za|co\.in|workers\.dev|pages\.dev|r2\.dev|vercel\.app|netlify\.app|github\.io)$/;
-
-export function registrableDomain(host: string) {
-  const labels = host.split('.');
-  return labels.slice(TWO_LEVEL.test(host) ? -3 : -2).join('.');
-}
-
-// Hosts whose reports must never count: shorteners, shared platforms (one bad Drive link must not taint google.com).
-const IMMUNE = new Set([...SHORTENERS, ...[...SHARED_HOSTS].map(registrableDomain)]);
-const isImmune = (d: string) => IMMUNE.has(d) || OFFICIAL.has(d);
 
 /** "https://Pay.Evil.com/x", "evil[.]com" → "evil.com"; null if not a domain. */
 function normaliseDomain(raw: string) {
@@ -57,23 +41,20 @@ export function validateReport(body: unknown) {
     if (typeof b.domain !== 'string' || b.domain.length > 2000) throw new Error('That domain is not valid');
     domain = normaliseDomain(b.domain);
     if (!domain) throw new Error('That domain is not valid');
-    if (OFFICIAL.has(domain)) throw new Error('That is an official website, so it cannot be reported');
-    if (IMMUNE.has(domain)) domain = null; // still counts by institution, never against bit.ly or github.com
+    if (isAllowlisted(domain)) throw new Error('That is an official website, so it cannot be reported');
+    if (isReportImmune(domain)) domain = null; // still counts by institution, never against bit.ly or github.com
   }
   if (b.snippet != null && typeof b.snippet !== 'string') throw new Error('The message text is not valid');
   const snippet = redact(String(b.snippet ?? '').slice(0, 2000)).slice(0, 280);
   return { institution, vector, district, domain, snippet };
 }
 
-/** Evidence-step contribution (PLAN §3.2): ≥3 distinct reporters → HIGH_RISK, 1–2 → SUSPICIOUS. Never throws. */
-export async function communityLevel(domain: string, store: Store = getStore()): Promise<Level> {
-  const d = normaliseDomain(domain);
-  if (!d || isImmune(d)) return Level.SAFE;
+/** Evidence step (PLAN §3.2): distinct reporters per registrable domain; `ruleFloor` turns them into a level. Never throws. */
+export async function communityReports(domains: string[], store: Store = getStore()) {
   try {
-    const n = await store.countReporters(d);
-    return n >= 3 ? Level.HIGH_RISK : n >= 1 ? Level.SUSPICIOUS : Level.SAFE;
+    return await Promise.all(domains.map(async (domain) => ({ domain, reporters: await store.countReporters(domain) })));
   } catch {
-    return Level.SAFE; // evidence failure adds nothing
+    return []; // evidence failure adds nothing
   }
 }
 
@@ -140,9 +121,12 @@ export function memoryStore(rows: ReportRow[] = demoRows()): Store {
 function tursoStore(url: string, authToken: string | undefined, fallback: Store): Store {
   const ready = import('@libsql/client/web').then(async ({ createClient }) => {
     const db = createClient({ url, authToken });
-    await db.execute(`CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, created_at INTEGER, institution TEXT,
-      vector TEXT, district TEXT, domain TEXT NULL, snippet TEXT, reporter_hash TEXT)`);
-    const { rows } = await db.execute('SELECT COUNT(*) AS n FROM reports');
+    // One round trip: a cold start must fit the scan's 3 s evidence timeout.
+    const [, { rows }] = await db.batch([
+      `CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, created_at INTEGER, institution TEXT,
+      vector TEXT, district TEXT, domain TEXT NULL, snippet TEXT, reporter_hash TEXT)`,
+      'SELECT COUNT(*) AS n FROM reports',
+    ]);
     if (Number(rows[0].n) === 0) for (const r of demoRows()) await insert(db, r);
     return db;
   });

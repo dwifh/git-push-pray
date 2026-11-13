@@ -17,6 +17,8 @@ assert.deepEqual(extractDomains(redact('Login: mсb-2024.mu now')), [domainToASC
 assert.equal(registrableDomain('a.b.mcb.mu'), 'mcb.mu');
 assert.equal(registrableDomain('www.bbc.co.uk'), 'bbc.co.uk');
 assert.equal(registrableDomain('login.x.workers.dev'), 'x.workers.dev', 'per-tenant host: the attacker owns x.workers.dev');
+assert.equal(registrableDomain('login.x.netlify.app'), 'x.netlify.app');
+assert.equal(registrableDomain('a.b.gov.mu'), 'b.gov.mu');
 
 assert.ok(isShortener('bit.ly') && isShortener('t.ly') && !isShortener('evilbit.ly'));
 assert.ok(isSharedHost('github.com') && isSharedHost('raw.githubusercontent.com'));

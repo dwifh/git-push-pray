@@ -1,15 +1,14 @@
 // Run: node src/lib/reports.test.ts
 import assert from 'node:assert/strict';
-import { communityLevel, hashReporter, memoryStore, registrableDomain, trending, validateReport } from './reports.ts';
-import { Level } from './verdict.ts';
+import { communityReports, hashReporter, memoryStore, trending, validateReport } from './reports.ts';
 
 const base = { institution: 'MAURITIUS_POST', vector: 'SMS', district: 'MOKA' };
 
 // validateReport: enums only, domain normalised, allowlisted refused, shortener/shared stored as null, snippet redacted.
 assert.deepEqual(validateReport({ ...base, domain: 'https://Pay.Parcel-Track-MU.com/x?otp=1' }).domain, 'parcel-track-mu.com');
 assert.equal(validateReport({ ...base, domain: 'evil[.]co.uk' }).domain, 'evil.co.uk', 'refanged, two-level suffix kept');
-assert.equal(registrableDomain('a.b.gov.mu'), 'b.gov.mu');
 assert.throws(() => validateReport({ ...base, domain: 'www.mcb.mu' }), /official/, 'allowlisted domain refused');
+assert.throws(() => validateReport({ ...base, domain: 'telecom.mu' }), /official/, 'same allowlist as the scan (extract.ts)');
 assert.equal(validateReport({ ...base, domain: 'bit.ly' }).domain, null, 'shortener stored as null');
 assert.equal(validateReport({ ...base, domain: 'drive.google.com' }).domain, null, 'shared host stored as null');
 assert.equal(validateReport({ ...base, domain: 'github.com' }).domain, null);
@@ -23,32 +22,29 @@ assert.throws(() => validateReport(null), /institution/);
 assert.equal(validateReport({ ...base, snippet: 'Call 5712 3456 OTP 482913' }).snippet, 'Call [PHONE] OTP [CODE]');
 assert.equal(validateReport({ ...base, snippet: 'a'.repeat(1000) }).snippet.length, 280);
 
-// Third DISTINCT reporter lifts a domain to HIGH_RISK (PLAN D9, step 6 Done-when).
+// Evidence step: DISTINCT reporters per registrable domain. The levels (3rd reporter → HIGH_RISK, immune domains never
+// count) are the rule floor's job and tested in rules.test.ts.
 const store = memoryStore([]);
 const report = (hash: string, domain: string | null = 'parcel-track-mu.com') =>
   store.add({ ...base, domain, snippet: '', reporterHash: hash, createdAt: Date.now() });
-assert.equal(await communityLevel('parcel-track-mu.com', store), Level.SAFE);
+const count = async (d: string, s = store) => (await communityReports([d], s))[0]?.reporters;
+assert.equal(await count('parcel-track-mu.com'), 0);
 await report('r1');
-assert.equal(await communityLevel('parcel-track-mu.com', store), Level.SUSPICIOUS);
 await report('r2');
 await report('r2');
 await report('r2');
-assert.equal(await communityLevel('parcel-track-mu.com', store), Level.SUSPICIOUS, 'same reporter repeated is still 2 distinct');
+assert.equal(await count('parcel-track-mu.com'), 2, 'same reporter repeated is still 2 distinct');
 await report('r3');
-assert.equal(await communityLevel('PARCEL-TRACK-MU.com', store), Level.HIGH_RISK, 'third distinct reporter');
-assert.equal(await communityLevel('www.parcel-track-mu.com', store), Level.HIGH_RISK, 'subdomain looks up registrable domain');
-// Immune domains never get a level, even if rows exist (e.g. seeded or legacy).
-for (const h of ['a', 'b', 'c']) await report(h, 'bit.ly');
-assert.equal(await communityLevel('bit.ly', store), Level.SAFE, 'shortener never counts');
-for (const h of ['a', 'b', 'c']) await report(h, 'mcb.mu');
-assert.equal(await communityLevel('mcb.mu', store), Level.SAFE, 'allowlisted never counts');
-assert.equal(await communityLevel('raw.githubusercontent.com', store), Level.SAFE);
-// A failing store degrades to SAFE (evidence step must never throw).
-assert.equal(await communityLevel('x.com', { ...store, countReporters: () => Promise.reject(new Error('down')) }), Level.SAFE);
+assert.equal(await count('parcel-track-mu.com'), 3, 'third distinct reporter');
+assert.deepEqual(await communityReports(['a.com', 'parcel-track-mu.com'], store), [
+  { domain: 'a.com', reporters: 0 },
+  { domain: 'parcel-track-mu.com', reporters: 3 },
+]);
+// A failing store adds no evidence (evidence step must never throw).
+assert.deepEqual(await communityReports(['x.com'], { ...store, countReporters: () => Promise.reject(new Error('down')) }), []);
 
 // Default demo store has 2 seeded reporters on the demo domain.
-const seeded = memoryStore();
-assert.equal(await communityLevel('parcel-track-mu.com', seeded), Level.SUSPICIOUS);
+assert.equal(await count('parcel-track-mu.com', memoryStore()), 2);
 
 // trending: last 7 days, counts by institution and district, top domains.
 const now = 10 * 86_400_000;

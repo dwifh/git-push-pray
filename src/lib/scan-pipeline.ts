@@ -6,7 +6,10 @@ import calibrationJson from './calibration.json' with { type: 'json' };
 import { CLAUDE_MODEL, callClaude, type ClaudeResult } from './claude.ts';
 import { extractDomains, registrableDomain } from './extract.ts';
 import { JEV_MODEL, callJevDecision, type JevQuestion } from './jev.ts';
+import { checkDomain } from './threat-intel.ts';
+import { searchKnowledgeBase } from './rag.ts';
 import { redact } from './redact.ts';
+import { communityReports } from './reports.ts';
 import { ruleFloor } from './rules.ts';
 import { SIGNAL_NAMES, SIGNALS, clarifyFor, scamScore, signalFlags, type SignalName } from './scam-signals.ts';
 import { LEVEL_NAME, Level, claudeLevel, jevLevel, loadCalibration, maxLevel } from './verdict.ts';
@@ -51,8 +54,17 @@ async function liveJev(text: string): Promise<JevResult | null> {
   };
 }
 
-// shortcut: threat intel, community reports and RAG land in PLAN steps 2 and 6 (Rushil); until then they add no evidence.
-export const LIVE_DEPS: Deps = { jev: liveJev, claude: callClaude, intel: async () => [], reports: async () => [], rag: async () => [] };
+// shortcut: first 3 hosts only, because VirusTotal's free tier allows 4 lookups/min; raise it with a paid key.
+const MAX_INTEL_HOSTS = 3;
+
+export const LIVE_DEPS: Deps = {
+  jev: liveJev,
+  claude: callClaude,
+  intel: (hosts) => Promise.all(hosts.slice(0, MAX_INTEL_HOSTS).map(async (domain) => ({ domain, ...(await checkDomain(domain)) }))),
+  reports: (domains) => communityReports(domains),
+  // Title and score only: the ScanResult contract, and the KB text never needs to reach the client.
+  rag: async (text) => (await searchKnowledgeBase(text)).map(({ title, score }) => ({ title, score })),
+};
 
 async function withTimeout<T>(run: () => Promise<T>, fallback: T) {
   let timer: ReturnType<typeof setTimeout> | undefined;

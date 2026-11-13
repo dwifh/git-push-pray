@@ -42,8 +42,11 @@ assert.equal(level('See drive.google.com/x', { communityReports: [{ domain: 'goo
 assert.equal(level('See github.com/x/y', { intel: [intel('github.com', 'unknown', 'listed')] }), Level.SUSPICIOUS);
 assert.equal(level('See x.workers.dev', { intel: [intel('x.workers.dev', 'unknown', 'listed')] }), Level.HIGH_RISK);
 assert.equal(level('See evil.com', { intel: [intel('evil.com', { malicious: 2, suspicious: 0 })] }), Level.HIGH_RISK);
-assert.equal(level('See evil.com', { intel: [intel('evil.com', { malicious: 1, suspicious: 0 })] }), Level.SUSPICIOUS);
-assert.equal(level('See evil.com', { intel: [intel('evil.com', { malicious: 0, suspicious: 1 })] }), Level.SUSPICIOUS);
+// PLAN §3.2: the weak signal needs two votes; a lone engine is noise (VT had google.com at malicious 1).
+assert.equal(level('See evil.com', { intel: [intel('evil.com', { malicious: 1, suspicious: 1 })] }), Level.SUSPICIOUS);
+assert.equal(level('See evil.com', { intel: [intel('evil.com', { malicious: 0, suspicious: 2 })] }), Level.SUSPICIOUS);
+assert.equal(level('See google.com', { intel: [intel('google.com', { malicious: 1, suspicious: 0 })] }), Level.SAFE);
+assert.equal(level('See google.com', { intel: [intel('google.com', { malicious: 0, suspicious: 1 })] }), Level.SAFE);
 assert.equal(level('See evil.com', { intel: [intel('evil.com', 'unknown', 'unknown')] }), Level.SAFE, 'a failed lookup adds nothing');
 
 // Pressure, payment, RAG.

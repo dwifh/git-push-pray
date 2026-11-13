@@ -14,11 +14,14 @@ import { redact } from '../src/lib/redact.ts';
 import { ruleFloor } from '../src/lib/rules.ts';
 import { LIVE_DEPS, runScanPipeline, type JevResult } from '../src/lib/scan-pipeline.ts';
 import { SIGNAL_NAMES, scamScore, type SignalName } from '../src/lib/scam-signals.ts';
+import { refang } from '../src/lib/threat-intel.ts';
 import { LEVEL_NAME, Level, claudeLevel, jevLevel, maxLevel } from '../src/lib/verdict.ts';
 import { VERDICTS, type Verdict } from '../src/shared/types.ts';
 
 type Message = { id: string; text: string; sender?: string; label: 'scam' | 'genuine'; split: 'dev' | 'test'; channel: string; expected?: Verdict };
-type RunRow = EvalRow & { id: string; split: 'dev' | 'test'; channel: string; clarify?: true }; // clarify: Claude skipped on purpose
+// clarify: Claude skipped on purpose. floor: the pipeline's rule floor with the evidence it saw (rows recorded before 2026-11-13
+// evening lack it and fall back to the offline floor).
+type RunRow = EvalRow & { id: string; split: 'dev' | 'test'; channel: string; clarify?: true; floor?: Verdict };
 
 const MESSAGES = 'data/eval/messages.jsonl';
 const RUN = 'data/eval/runs/latest.jsonl';
@@ -30,6 +33,8 @@ const IN_DOMAIN = new Set(['SMS', 'EMAIL']);
 
 const readJsonl = <T>(file: string): T[] =>
   existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l: string) => JSON.parse(l)) : [];
+// Committed scam domains are defanged (`evil[.]com`, CLAUDE.md); scan them the way a user would paste them.
+const readMessages = () => readJsonl<Message>(MESSAGES).map((m) => ({ ...m, text: refang(m.text) }));
 
 // A malformed Jev reply counts as a failed call (skipped), never as "no risk": JSON would turn NaN into null → 0.
 const completeSignals = (s?: JevResult['signals']) =>
@@ -38,7 +43,7 @@ const completeSignals = (s?: JevResult['signals']) =>
 async function record(limit: number) {
   mkdirSync('data/eval/runs', { recursive: true });
   const done = new Set(readJsonl<RunRow>(RUN).map((r) => r.id));
-  const todo = readJsonl<Message>(MESSAGES).filter((m) => !done.has(m.id)).slice(0, limit);
+  const todo = readMessages().filter((m) => !done.has(m.id)).slice(0, limit);
   console.log(`recording ${todo.length} messages (${done.size} already done)`);
   let i = 0;
   const worker = async () => {
@@ -47,11 +52,23 @@ async function record(limit: number) {
       const raw: { jev?: JevResult | null; claude?: ClaudeResult | null } = {};
       const r = await runScanPipeline(
         { text: m.text, sender: m.sender },
-        { ...LIVE_DEPS, jev: async (t) => (raw.jev = await LIVE_DEPS.jev(t)), claude: async (t, e) => (raw.claude = await LIVE_DEPS.claude(t, e)) },
+        {
+          ...LIVE_DEPS,
+          // No threat intel: 440 messages would burn VirusTotal's 500/day free quota before the demo.
+          intel: async () => [],
+          jev: async (t) => (raw.jev = await LIVE_DEPS.jev(t)),
+          claude: async (t, e) => (raw.claude = await LIVE_DEPS.claude(t, e)),
+        },
       );
       const signals = completeSignals(raw.jev?.signals);
       const claude = raw.claude?.verdict ?? null;
-      const row: RunRow = { id: m.id, split: m.split, channel: m.channel, label: m.label, signals, claude, ...(r.clarify && { clarify: true as const }) };
+      // Same facts as the pipeline's floor, with the reports and RAG matches it actually got back.
+      const text = redact(m.text);
+      const floor = ruleFloor({ text, domains: r.evidence.domains, communityReports: r.evidence.communityReports, ragMatches: r.evidence.ragMatches });
+      const row: RunRow = {
+        id: m.id, split: m.split, channel: m.channel, label: m.label, signals, claude, floor: LEVEL_NAME[floor.level],
+        ...(r.clarify && { clarify: true as const }),
+      };
       appendFileSync(RUN, JSON.stringify(row) + '\n');
       process.stdout.write(r.clarify ? '?' : signals ? (claude ? '.' : 'c') : claude ? 'j' : 'x'); // ? = clarified, c/j = that call failed, x = both
     }
@@ -60,11 +77,10 @@ async function record(limit: number) {
   console.log('\ndone');
 }
 
-// The rule floor per message id, as the pipeline computes it. shortcut: no intel, reports or RAG (empty deps until step 2);
-// once they land, record the pipeline's floor in the run row instead.
+// The rule floor per message id without evidence: only for run rows recorded before `floor` was saved.
 const ruleFloors = () =>
   new Map(
-    readJsonl<Message>(MESSAGES).map((m) => {
+    readMessages().map((m) => {
       const text = redact(m.text);
       return [m.id, ruleFloor({ text, domains: extractDomains(text) }).level];
     }),
@@ -73,7 +89,7 @@ const ruleFloors = () =>
 function report(name: string, rows: RunRow[], cal: Calibration, floors: Map<string, Level>) {
   const levels = rows.map((r) => {
     const jev = r.signals ? jevLevel(scamScore(r.signals, cal.jev.weights), cal.jev) : Level.SAFE;
-    return maxLevel(floors.get(r.id) ?? Level.SAFE, jev, claudeLevel(r.claude ?? null, cal.claude));
+    return maxLevel(r.floor ? Level[r.floor] : (floors.get(r.id) ?? Level.SAFE), jev, claudeLevel(r.claude ?? null, cal.claude));
   });
   const scams = rows.filter((r) => r.label === 'scam');
   const missed = rows.filter((r, i) => r.label === 'scam' && levels[i] === Level.SAFE);
@@ -120,7 +136,7 @@ function rulesRun() {
   console.log(`lookalike false positives: ${fp.length}/${good.length} good domains${list(fp.map((r) => r.domain))}`);
   if (fp.length) process.exitCode = 1;
 
-  const rows = readJsonl<Message>(MESSAGES).map((m) => {
+  const rows = readMessages().map((m) => {
     const text = redact(m.text);
     return { m, floor: ruleFloor({ text, domains: extractDomains(text) }).level };
   });

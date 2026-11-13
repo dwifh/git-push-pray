@@ -23,7 +23,7 @@ const SHARED_HOSTS = new Set([
   'pastebin.com', 'linktr.ee', 'pixeldrain.com', 'www.mediafire.com', 'res.cloudinary.com', 'web.archive.org',
 ]);
 // x.workers.dev belongs to whoever registered x, so it is its own registrable domain (and never a shared host).
-const TENANT_SUFFIXES = ['workers.dev', 'pages.dev', 'r2.dev', 'vercel.app', 'github.io'];
+const TENANT_SUFFIXES = ['workers.dev', 'pages.dev', 'r2.dev', 'vercel.app', 'netlify.app', 'github.io'];
 // shortcut: common second-level suffixes (co.uk, gov.in) instead of the Public Suffix List; switch to the PSL if the Feed
 // shows reports merged across unrelated sites.
 const SLD = new Set(['co', 'com', 'net', 'org', 'gov', 'ac', 'edu', 'gouv']);
