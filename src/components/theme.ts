@@ -6,13 +6,13 @@ const dark = {
   bg: '#060B14', card: '#0F1626', cardHi: '#141D30', border: '#1F2A40', text: '#F1F5F9', muted: '#9AA8BC',
   teal: '#4FE0C4', tealDeep: '#2BB89E', onTeal: '#04231D', tealSoft: '#0E2A2A',
   orange: '#FF7A45', orangeDeep: '#E5531F', onOrange: '#1A0A03', orangeSoft: '#2A1712',
-  blue: '#8B9CFF', blueSoft: '#1A2147', purple: '#6D4C9F', grid: 'rgba(148,163,184,0.06)',
+  blue: '#8B9CFF', blueSoft: '#1A2147', purple: '#6D4C9F', purpleSoft: '#1E1830', grid: 'rgba(148,163,184,0.06)',
 };
 const light: typeof dark = {
   bg: '#F1F4F9', card: '#FFFFFF', cardHi: '#F7F9FC', border: '#D5DDE8', text: '#0B1220', muted: '#56657B',
   teal: '#0B7A66', tealDeep: '#08624F', onTeal: '#FFFFFF', tealSoft: '#E3F5F1',
   orange: '#C2410C', orangeDeep: '#9A3412', onOrange: '#FFFFFF', orangeSoft: '#FFEDE5',
-  blue: '#2B4FD6', blueSoft: '#E6EBFF', purple: '#6D4C9F', grid: 'rgba(15,23,42,0.05)',
+  blue: '#2B4FD6', blueSoft: '#E6EBFF', purple: '#6D4C9F', purpleSoft: '#F1ECFA', grid: 'rgba(15,23,42,0.05)',
 };
 
 export type Theme = typeof dark;
