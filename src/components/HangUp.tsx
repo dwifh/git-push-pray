@@ -5,8 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendAlert } from '@/shared/alert';
 import { QUESTIONS, type Answers } from '@/shared/coach';
 import { getContact } from '@/shared/contact';
-import { ALARM, FONT, css, glow } from './theme';
-import type { IconName } from './ui';
+import { ALARM, FONT, RADIUS, css } from './theme';
+import { EASE, isHover, type IconName } from './ui';
 
 // Fixed flag text is written about the user ("them"); on their own screen it speaks to them.
 const toYou = (flag: string) => (flag[0].toUpperCase() + flag.slice(1)).replace(/\bthem\b/, 'you');
@@ -24,19 +24,18 @@ export function HangUp({ answers, flag, onSettings, onRestart }: { answers: Answ
     setAlert(await sendAlert({ template: 'call_alert', to, vars: [firstName || 'Your family member', flag] }));
   }
 
-  const page = css({ backgroundImage: `radial-gradient(ellipse 100% 45% at 50% 0%, ${ALARM.glow}88, transparent 75%)` });
   return (
-    <ScrollView style={[s.page, page]} contentContainerStyle={[s.inner, { paddingTop: top + 28 }]}>
+    <ScrollView style={s.page} contentContainerStyle={[s.inner, { paddingTop: top + 28 }]}>
       <View accessibilityLiveRegion="assertive" style={{ gap: 16 }}>
         <View style={s.badge}>
-          <Ionicons name="warning" size={20} color="#2A0603" />
+          <Ionicons name="warning" size={18} color={ALARM.ink} />
           <Text style={s.badgeText}>THIS IS A SCAM</Text>
         </View>
         <View style={s.rings}>
-          <View style={[s.ring, { padding: 12, borderColor: 'rgba(255,255,255,0.14)' }]}>
-            <View style={[s.ring, { padding: 12, borderColor: ALARM.line }]}>
-              <View style={[s.core, glow(ALARM.glow, 40)]}>
-                <Ionicons name="call" size={60} color={ALARM.bg} style={{ transform: [{ rotate: '135deg' }] }} />
+          <View style={[s.ring, { borderColor: ALARM.soft }]}>
+            <View style={[s.ring, { borderColor: ALARM.line }]}>
+              <View style={s.core}>
+                <Ionicons name="call" size={52} color={ALARM.bg} style={{ transform: [{ rotate: '135deg' }] }} />
               </View>
             </View>
           </View>
@@ -47,7 +46,7 @@ export function HangUp({ answers, flag, onSettings, onRestart }: { answers: Answ
         <View style={s.card}>
           {(signs.length ? signs : [toYou(flag)]).map((sign) => (
             <View key={sign} style={s.sign}>
-              <Text style={s.bang}>!</Text>
+              <Ionicons name="alert-circle" size={24} color={ALARM.badge} />
               <Text style={s.signText}>{sign}</Text>
             </View>
           ))}
@@ -92,31 +91,31 @@ function Action({ icon, label, onPress, solid, disabled, half }: { icon: IconNam
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [s.action, half && s.half, solid && [{ backgroundColor: ALARM.text }, glow('#FFFFFF', 20)], { opacity: pressed || disabled ? 0.8 : 1 }]}>
-      <Ionicons name={icon} size={26} color={fg} />
+      style={(st) => [s.action, EASE, half && s.half, { backgroundColor: solid ? ALARM.text : st.pressed || isHover(st) ? ALARM.soft : 'transparent', opacity: disabled ? 0.6 : solid && (st.pressed || isHover(st)) ? 0.9 : 1, transform: [{ scale: st.pressed ? 0.98 : 1 }] }]}>
+      <Ionicons name={icon} size={24} color={fg} />
       <Text style={[s.actionText, { color: fg }]}>{label}</Text>
     </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: ALARM.bg },
-  inner: { paddingHorizontal: 16, paddingBottom: 40, width: '100%', maxWidth: 560, alignSelf: 'center' },
-  badge: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: ALARM.glow, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 },
-  badgeText: { fontFamily: FONT.body, color: '#2A0603', fontSize: 17, fontWeight: '900', letterSpacing: 1.6 },
+  // One flat alarm red. --focus: the keyboard focus ring is white here (teal would vanish on red).
+  page: { flex: 1, backgroundColor: ALARM.bg, ...css({ '--focus': ALARM.text }) },
+  inner: { paddingHorizontal: 20, paddingBottom: 40, width: '100%', maxWidth: 600, alignSelf: 'center' },
+  badge: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: ALARM.badge, borderRadius: RADIUS.pill, paddingHorizontal: 16, paddingVertical: 8 },
+  badgeText: { fontFamily: FONT.body, color: ALARM.ink, fontSize: 15, fontWeight: '800', letterSpacing: 1.4 },
   rings: { alignItems: 'center' },
-  ring: { borderRadius: 999, borderWidth: 1.5 },
-  core: { width: 124, height: 124, borderRadius: 62, backgroundColor: ALARM.text, alignItems: 'center', justifyContent: 'center' },
-  hang: { fontFamily: FONT.display, color: ALARM.text, fontSize: 46, lineHeight: 52, fontWeight: '700', textAlign: 'center', letterSpacing: -0.5 },
-  advice: { fontFamily: FONT.body, color: ALARM.text, fontSize: 19, lineHeight: 27, textAlign: 'center' },
-  card: { borderWidth: 1, borderColor: ALARM.line, backgroundColor: 'rgba(0,0,0,0.18)', borderRadius: 24, padding: 16, gap: 12 },
-  sign: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: ALARM.soft, borderRadius: 18, padding: 14 },
-  bang: { fontFamily: FONT.display, color: ALARM.glow, fontSize: 24, fontWeight: '700', width: 18, textAlign: 'center' },
-  signText: { fontFamily: FONT.body, color: ALARM.text, fontSize: 19, lineHeight: 26, fontWeight: '600', flex: 1 },
+  ring: { borderRadius: RADIUS.pill, borderWidth: 1, padding: 12 },
+  core: { width: 112, height: 112, borderRadius: 56, backgroundColor: ALARM.text, alignItems: 'center', justifyContent: 'center' },
+  hang: { fontFamily: FONT.display, color: ALARM.text, fontSize: 46, lineHeight: 50, fontWeight: '700', textAlign: 'center', letterSpacing: -1 },
+  advice: { fontFamily: FONT.body, color: ALARM.text, fontSize: 19, lineHeight: 28, textAlign: 'center' },
+  card: { gap: 8 },
+  sign: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: ALARM.soft, borderRadius: RADIUS.md, padding: 16 },
+  signText: { fontFamily: FONT.body, color: ALARM.text, fontSize: 18, lineHeight: 26, fontWeight: '600', flex: 1 },
   pair: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   half: { flexGrow: 1, flexBasis: 150 },
-  action: { minHeight: 64, borderRadius: 22, borderWidth: 2, borderColor: ALARM.text, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
-  actionText: { fontFamily: FONT.display, fontSize: 21, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
+  action: { minHeight: 60, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: ALARM.text, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  actionText: { fontFamily: FONT.display, fontSize: 20, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
   restart: { minHeight: 52, alignItems: 'center', justifyContent: 'center' },
-  restartText: { fontFamily: FONT.body, color: ALARM.text, fontSize: 18, fontWeight: '700', textDecorationLine: 'underline' },
+  restartText: { fontFamily: FONT.body, color: ALARM.text, fontSize: 17, fontWeight: '600', textDecorationLine: 'underline' },
 });

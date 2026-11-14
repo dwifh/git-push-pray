@@ -1,9 +1,9 @@
 {
-  "name": "Hackathon App",
-  "short_name": "Hackathon",
+  "name": "ScamGuard",
+  "short_name": "ScamGuard",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#208AEF",
+  "background_color": "#F4F6F9",
+  "theme_color": "#0B7A66",
   "icons": [{ "src": "/icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }]
 }
