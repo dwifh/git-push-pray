@@ -25,7 +25,7 @@ Out of scope, mention only as "next": inbound WhatsApp (webhook) scanning, SMS i
 Shared by `/api/scan` and `/api/email`. Order is fixed:
 1. **Redact** PII (`src/lib/redact.ts`) — everything downstream sees redacted text only.
 2. **Extract + rules**: URLs → registrable domains; deterministic red-flag rules; lookalike-domain check against the official allowlist.
-3. **Evidence** in parallel, each with a 3s timeout and an `unknown` result on failure: VirusTotal domain lookup, URLhaus host lookup, community reports for the domain, RAG top matches.
+3. **Evidence** in parallel, each with a 3s timeout and an `unknown` result on failure: VirusTotal domain lookup, URLhaus host lookup, isMalicious phone lookup (sender + numbers in the text), community reports for the domain, RAG top matches.
 4. **Tier 1 — Jev** (`typesafe/jev-1.13`, OpenRouter Decisions API): scam-signal probabilities → noisy-OR score; clarifier (`isFragment`, `missingField: sender | link | full_text | none`). Clarify only when the rule floor is below `HIGH_RISK`; a clear scam is never stalled by a question.
 5. **Tier 3 — Claude** (`~anthropic/claude-sonnet-latest`): one call, strict JSON schema, **no tools**, untrusted text passed as data.
 6. **Verdict = max(rule floor, `jevLevel`, `claudeLevel`)** (`src/lib/verdict.ts`). Every input can only raise risk. Claude/Jev failure → verdict from what succeeded.
@@ -37,10 +37,11 @@ There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety
 ## Security rules (non-negotiable)
 - **Monotonic verdict**: untrusted content can raise risk, never lower it. Code owns the floor; models only add.
 - **Redact before egress**: no raw message, email body, phone number, card/account number, NIC or OTP reaches an LLM, a log, or the Feed. Raw text is never logged.
+- **Phone reputation exception**: the sender's number and phone numbers in the message (at most 2 per scan, `src/lib/phone-intel.ts`) go to isMalicious only, as bare digits. They never reach an LLM, a log, storage or the client (models see `[PHONE …]` plus the isMalicious verdict). The trusted-contact number is never looked up. isMalicious alone caps at `SUSPICIOUS` (uncalibrated).
 - **Never fetch untrusted URLs** (no previews, no redirect expansion, no HEAD). Threat intel is looked up by domain only; full URLs are never submitted to VirusTotal.
 - **Allowlisted official domains**, known URL shorteners and `SHARED_HOSTS` (github.com, drive.google.com, …; PLAN §3.2) can never be flagged by community reports. A threat-intel hit on a `SHARED_HOSTS` host caps at `SUSPICIOUS`; per-tenant subdomains (`x.workers.dev`, `x.pages.dev`) are not shared.
 - **No raw datasets or malware lists in git.** Raw downloads live in `data/raw/` (gitignored); commit only small derived files. Malicious domains in committed files are defanged (`evil[.]com`), because Windows Defender quarantines plain malware host lists.
-- Secrets (`OPENROUTER_API_KEY`, `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `TURSO_*`, `HASH_SALT`) live only in `src/lib/` (server-only) and EAS env; nothing secret in `EXPO_PUBLIC_*`. Client-safe shared logic lives in `src/shared/`.
+- Secrets (`OPENROUTER_API_KEY`, `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY`, `IsMalicious_API_KEY`, `IsMalicious_API_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `TURSO_*`, `HASH_SALT`) live only in `src/lib/` (server-only) and EAS env; nothing secret in `EXPO_PUBLIC_*`. Client-safe shared logic lives in `src/shared/`.
 - Every API route (except the static `/api/health` liveness probe, which has no input): rate limit (`ALERTS_RATE_LIMIT_PER_USER_PER_MINUTE`, `ALERTS_RATE_LIMIT_GLOBAL_PER_MINUTE`) → validate input (type, length) → try/catch with a friendly error.
 - WhatsApp sends: only approved templates by name from a server-side allowlist; every Graph API call carries `appsecret_proof` (HMAC-SHA256 of `WHATSAPP_TOKEN` keyed with `WHATSAPP_APP_SECRET`); template variables are redacted, single-line, length-capped and **never contain a URL** (we never spread a scam link). Strict per-IP rate limit on `/api/alert`.
 - The trusted contact number lives in device `localStorage`; the server receives it per request to send, and never stores or logs it.
