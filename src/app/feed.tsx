@@ -17,9 +17,9 @@ export default function Feed() {
   const [reload, setReload] = useState(0);
   // Scan/Email "Warn others"/"Report" send ?report=<time>&vector&domain: open the report form, prefilled.
   const { report, vector, domain } = useLocalSearchParams<{ report?: string; vector?: string; domain?: string }>();
-  useEffect(() => {
-    if (report) setReporting(true);
-  }, [report]);
+  // Adjust state on a param change during render (react.dev "you might not need an effect").
+  const [seenReport, setSeenReport] = useState<string>();
+  if (report !== seenReport) { setSeenReport(report); if (report) setReporting(true); }
 
   useEffect(() => {
     let live = true;

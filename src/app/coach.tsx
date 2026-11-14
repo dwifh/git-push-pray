@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ContactSettings } from '@/components/ContactSettings';
 import { HangUp } from '@/components/HangUp';
@@ -33,9 +33,9 @@ export default function Coach() {
   const restart = () => { setStep('intro'); setAnswers({}); setServerScore(undefined); setSaid(''); setCheck('idle'); };
   // Scan's "I answered by mistake" sends ?start=<time>: go straight to question 1.
   const { start } = useLocalSearchParams<{ start?: string }>();
-  useEffect(() => {
-    if (start) { restart(); setSettings(false); setStep(0); }
-  }, [start]);
+  // Adjust state on a param change during render (react.dev "you might not need an effect").
+  const [seenStart, setSeenStart] = useState<string>();
+  if (start !== seenStart) { setSeenStart(start); if (start) { restart(); setSettings(false); setStep(0); } }
 
   if (settings) return <ContactSettings onDone={() => setSettings(false)} />;
   // Scored on-device after every tap: the warning shows the moment the cutoff is reached (PLAN §4 short-circuit).
