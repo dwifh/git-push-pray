@@ -2,6 +2,7 @@
 import { INSTITUTION_LABEL, type DomainIntel } from '../shared/types.ts';
 import type { EmailFacts } from './email.ts';
 import { BRANDS, isReportImmune, isSharedHost, isShortener, lookalikeOf, registrableDomain } from './extract.ts';
+import { phoneLevel, type PhoneIntel } from './phone-intel.ts';
 import { intelLevel } from './threat-intel.ts';
 import { Level, maxLevel } from './verdict.ts';
 
@@ -9,12 +10,13 @@ export type RuleFacts = {
   text: string; // redacted
   domains: string[]; // extractDomains(text)
   intel?: DomainIntel[]; // domain = the exact host, so the SHARED_HOSTS cap applies
+  phoneIntel?: PhoneIntel[]; // isMalicious, sender + numbers in the text
   communityReports?: { domain: string; reporters: number }[]; // domain = registrableDomain, as stored (PLAN §5)
   ragMatches?: { title: string; score: number }[];
   email?: EmailFacts; // Email Guard only (PLAN §6)
 };
 
-const RAG_MATCH_THRESHOLD = 0.55; // shortcut: PLAN start value; calibrate on the demo messages (TEAM-PLAN §5)
+export const RAG_MATCH_THRESHOLD = 0.55; // shortcut: PLAN start value; calibrate on the demo messages (TEAM-PLAN §5)
 
 // Rules read redacted text: an OTP is "[CODE]", a number is "[PHONE …]". Wording within one sentence (no . ! ? or newline).
 const CREDENTIAL = String.raw`(?:otp|one[- ]time (?:password|pin|code)|pin|password|passcode|cvv|cvc|card (?:number|details)|security code|verification code|(?:login|bank|banking) details)`;
@@ -54,6 +56,8 @@ export function ruleFloor(f: RuleFacts): { level: Level; flags: string[] } {
       add(lvl, 'A link goes to a site that hosts files for anyone; one of them was reported as malware.');
     else if (lvl === Level.SUSPICIOUS) add(lvl, 'A security service flagged a link in this message.');
   }
+  if ((f.phoneIntel ?? []).some((p) => phoneLevel(p.result) === Level.SUSPICIOUS))
+    add(Level.SUSPICIOUS, 'A phone number linked to this message has a record of fraud or spam.');
   const reporters = Math.max(0, ...(f.communityReports ?? []).filter((r) => !isReportImmune(r.domain)).map((r) => r.reporters));
   if (reporters >= 3) add(Level.HIGH_RISK, `${reporters} people reported this website as a scam.`);
   else if (reporters > 0) add(Level.SUSPICIOUS, `${reporters === 1 ? '1 person' : '2 people'} reported this website as a scam.`);

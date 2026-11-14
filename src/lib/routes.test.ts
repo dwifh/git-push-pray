@@ -4,8 +4,12 @@
 import assert from 'node:assert/strict';
 import { POST as alert } from '../app/api/alert+api.ts';
 import { POST as coach } from '../app/api/coach+api.ts';
+import { POST as email } from '../app/api/email+api.ts';
+import { GET as helpGet, POST as help, PUT as helpPut } from '../app/api/help+api.ts';
 import { GET as feed, POST as report } from '../app/api/reports+api.ts';
+import { memoryHelpStore, type HelpRow, type HelpStore } from './help.ts';
 import { memoryStore, type ReportRow, type Store } from './reports.ts';
+import { LIVE_DEPS } from './scan-pipeline.ts';
 
 delete process.env.TURSO_DATABASE_URL; // never reach the real DB, even if a test moves above setStore()
 Object.assign(process.env, {
@@ -54,6 +58,7 @@ await assertRejects(alert, [
   [{ ...validAlert, to: '+230 5712' }, 'non-E.164 number'],
   [{ ...validAlert, vars: ['Asha', 'go to evil.com'] }, 'domain in a variable'],
   [{ ...validAlert, vars: 'Asha' }, 'vars not an array'],
+  [{ ...validAlert, template: 'help_request', vars: ['Asha', '123456'] }, 'help_request only via /api/help'],
 ]);
 assert.equal(fetched.length, 0, 'invalid input never reaches Meta');
 
@@ -143,5 +148,177 @@ setStore(memoryStore([]));
 for (let i = 0; i < 10; i++) assert.equal((await send(report(post(validReport, 'r3')))).status, 200);
 assertError(await send(report(post(validReport, 'r3'))), 429, 'report rate limit');
 assert.equal((await send(feed(get('r3')))).status, 200);
+
+// /api/email: bad input → 400 { error }, no model called.
+fetched.length = 0;
+await assertRejects(email, [
+  ['{not json', 'malformed JSON'],
+  ['null', 'null body'],
+  [{}, 'missing raw'],
+  [{ raw: '  \n ' }, 'blank raw'],
+  [{ raw: 42 }, 'raw not a string'],
+  [{ raw: 'a'.repeat(100_001) }, 'over 100 KB'],
+]);
+assert.equal(fetched.length, 0);
+
+// Jev + Claude answer → 200 EmailResult. Fictitious newsletter; threat intel and RAG fail (503) → unknown / [], never clean.
+const NEWSLETTER = [
+  'Authentication-Results: mx.example.net; spf=pass; dkim=pass; dmarc=pass header.from=lagoonbooks.example',
+  'From: "Lagoon Books" <news@lagoonbooks.example>',
+  'Subject: New arrivals this week',
+  '',
+  'Here are this week\'s new novels. Questions? Call 5712 3456. See https://lagoonbooks.example/new',
+].join('\r\n');
+const jevBody = () => fetched.find((f) => f.url.includes('/decisions'))?.init.body;
+reply = (url) =>
+  url.includes('/decisions')
+    ? Response.json({ answers: { asksForSecret: { type: 'noul', noul: 0 }, importance: { type: 'choice', choice: 'PROMOTIONAL' } } })
+    : url.includes('/chat/completions')
+      ? Response.json({ choices: [{ message: { content: JSON.stringify({ verdict: 'SAFE', redFlags: [], scamType: '', advice: 'ok' }) } }] })
+      : new Response('{}', { status: 503 });
+fetched.length = 0;
+const ok = await send(email(post({ raw: NEWSLETTER }, 'e1')));
+assert.equal(ok.status, 200);
+assert.equal(ok.body.verdict, 'SAFE');
+assert.equal(ok.body.importance, 'PROMOTIONAL');
+for (const k of ['flags', 'advice', 'scamType', 'evidence', 'metadata']) assert.ok(k in ok.body, `EmailResult has ${k}`);
+assert.match(String(jevBody()), /"importance"/, 'the email path asks Jev for importance');
+for (const f of fetched) assert.doesNotMatch(String(f.init.body ?? ''), /5712/, 'phone number redacted before egress');
+
+// Models down → still 200 with the rule verdict and the fixed default importance.
+reply = () => new Response('{"error":"down"}', { status: 503 });
+const down = await send(email(post({ raw: NEWSLETTER }, 'e2')));
+assert.equal(down.status, 200);
+assert.equal(down.body.verdict, 'SAFE');
+assert.equal(down.body.importance, 'ROUTINE');
+
+// An internal failure that quotes the email → 502 { error }; neither the reply nor the log repeats it.
+const realJev = LIVE_DEPS.jev;
+LIVE_DEPS.jev = async (t) => ({ signals: { get asksForSecret(): number { throw new Error(t); } }, isFragment: 0, missingField: 'none' });
+const logged: unknown[] = [];
+const realError = console.error;
+console.error = (...a: unknown[]) => void logged.push(...a);
+const failed = await send(email(post({ raw: NEWSLETTER }, 'e3')));
+console.error = realError;
+LIVE_DEPS.jev = realJev;
+assertError(failed, 502, 'email pipeline bug');
+assert.doesNotMatch(JSON.stringify([failed.body, logged.map(String)]), /novels|Lagoon/, 'raw email never in the reply or the log');
+
+// 10 per IP per minute → 429 { error }.
+for (let i = 0; i < 10; i++) assert.equal((await send(email(post({ raw: NEWSLETTER }, 'e4')))).status, 200);
+assertError(await send(email(post({ raw: NEWSLETTER }, 'e4'))), 429, 'email rate limit');
+
+// /api/help (Helping Hands, PLAN §7.3). Models down (503) → the server's re-scan is rules only.
+const setHelpStore = (s: HelpStore) => ((globalThis as { __helpStore?: HelpStore }).__helpStore = s);
+const helpRows = new Map<string, HelpRow>();
+setHelpStore(memoryHelpStore(helpRows));
+reply = (url) => (url.includes('graph.facebook.com') ? new Response('{}', { status: 200 }) : new Response('{"error":"down"}', { status: 503 }));
+const MCB_SCAM = 'Your MCB account is blocked. Confirm your OTP at https://mcb-secure-login.com or call 5712 3456';
+const askHelp = { elderName: 'Nani', to: '23057000001', text: MCB_SCAM, verdict: 'HIGH_RISK' };
+
+// Bad input → 400, no model and no WhatsApp call.
+fetched.length = 0;
+await assertRejects(help, [
+  ['{not json', 'malformed JSON'],
+  ['null', 'null body'],
+  [{ ...askHelp, text: '  ' }, 'blank text'],
+  [{ ...askHelp, text: 'a'.repeat(4001) }, 'text over 4000'],
+  [{ ...askHelp, sender: 42 }, 'sender not a string'],
+  [{ ...askHelp, verdict: 'FINE' }, 'unknown verdict'],
+  [{ ...askHelp, to: '+230 5700' }, 'non-E.164 number'],
+  [{ ...askHelp, elderName: 'Nani\nvisit evil.com' }, 'linky elder name'],
+  [{ ...askHelp, elderName: '' }, 'blank elder name'],
+]);
+assert.equal(fetched.length, 0, 'invalid help requests reach no model and no phone');
+
+// Elder asks → { code, token, sent }; the helper gets the code by WhatsApp, the text is stored redacted.
+Object.assign(process.env, { WHATSAPP_TEMPLATE_MODE: 'text' });
+fetched.length = 0;
+const asked = await send(help(post(askHelp, 'h1')));
+assert.equal(asked.status, 200);
+assert.match(asked.body.code, /^\d{6}$/);
+assert.equal(typeof asked.body.token, 'string');
+assert.ok(asked.body.token.length >= 32, 'the poll token is unguessable');
+assert.equal(asked.body.sent, true);
+const wa = JSON.parse(String(fetched.find((f) => f.url.includes('graph.facebook.com'))?.init.body));
+assert.equal(wa.to, '23057000001');
+assert.match(wa.text.body, new RegExp(`help request from Nani\\.[\\s\\S]*enter this code: ${asked.body.code}`));
+assert.doesNotMatch(wa.text.body, /mcb-secure-login/, 'the WhatsApp never carries the scam link');
+const stored = helpRows.get(asked.body.code)!;
+assert.doesNotMatch(stored.text, /5712/, 'stored text is redacted');
+assert.ok(!JSON.stringify(stored).includes('23057000001'), "the helper's number is never stored");
+Object.assign(process.env, { WHATSAPP_TEMPLATE_MODE: 'test' });
+
+// Meta down → still 200 with sent: false (the screen shows the wa.me button).
+reply = () => new Response('{"error":"down"}', { status: 503 });
+const unsent = await send(help(post(askHelp, 'h2')));
+assert.equal(unsent.status, 200);
+assert.equal(unsent.body.sent, false);
+
+const helpQuery = (q: string, ip: string) => new Request(`http://x/api/help?${q}`, { headers: { 'cf-connecting-ip': ip } });
+const put = (body: unknown, ip: string) => new Request('http://x/api/help', { method: 'PUT', headers: { 'cf-connecting-ip': ip }, body: JSON.stringify(body) });
+
+// Helper opens the code → the redacted message, the server's verdict and flags, no reply yet.
+const view = await send(helpGet(helpQuery(`code=${asked.body.code}`, 'hv1')));
+assert.equal(view.status, 200);
+assert.deepEqual(Object.keys(view.body).sort(), ['advice', 'elderName', 'flags', 'reply', 'text', 'verdict']);
+assert.equal(view.body.elderName, 'Nani');
+assert.equal(view.body.verdict, 'HIGH_RISK');
+assert.match(view.body.text, /\[PHONE\]/);
+assert.ok(view.body.flags.length > 0, 'the helper sees the red flags');
+assert.ok(!JSON.stringify(view.body).includes(asked.body.token), 'the helper never sees the elder poll token');
+
+// Elder polls → no reply yet.
+assert.deepEqual(await send(helpGet(helpQuery(`token=${asked.body.token}`, 'hp1'))), { status: 200, body: { reply: null } });
+
+// "It's genuine" is refused on HIGH_RISK; a valid reply lands once; the elder's poll sees it.
+assertError(await send(helpPut(put({ code: asked.body.code, reply: 'GENUINE' }, 'hr1'))), 400, 'genuine on HIGH_RISK');
+await assertRejects(helpPut, [
+  ['{not json', 'malformed JSON'],
+  [{ code: asked.body.code, reply: 'MAYBE' }, 'unknown reply'],
+  [{ code: '12345', reply: 'CALL_YOU' }, 'code not 6 digits'],
+]);
+assert.deepEqual(await send(helpPut(put({ code: asked.body.code, reply: 'CALL_YOU' }, 'hr2'))), { status: 200, body: { ok: true } });
+assertError(await send(helpPut(put({ code: asked.body.code, reply: 'DELETE_IT' }, 'hr3'))), 409, 'second reply');
+assert.deepEqual(await send(helpGet(helpQuery(`token=${asked.body.token}`, 'hp1'))), { status: 200, body: { reply: 'CALL_YOU' } });
+
+// The elder's verdict can only raise the helper's: a harmless text the elder saw as SUSPICIOUS stays SUSPICIOUS,
+// and a client claiming SAFE for the MCB scam still shows HIGH_RISK (the server's re-scan).
+reply = () => new Response('{"error":"down"}', { status: 503 });
+const raised = await send(help(post({ ...askHelp, text: 'See you at lunch on Sunday', verdict: 'SUSPICIOUS' }, 'h3')));
+assert.equal((await send(helpGet(helpQuery(`code=${raised.body.code}`, 'hv2')))).body.verdict, 'SUSPICIOUS');
+const spoofed = await send(help(post({ ...askHelp, verdict: 'SAFE' }, 'h4')));
+assert.equal((await send(helpGet(helpQuery(`code=${spoofed.body.code}`, 'hv2')))).body.verdict, 'HIGH_RISK', 'a fake SAFE never reaches the helper');
+assert.deepEqual(await send(helpPut(put({ code: raised.body.code, reply: 'GENUINE' }, 'hr4'))), { status: 200, body: { ok: true } }, 'genuine allowed below HIGH_RISK');
+
+// Unknown or expired → 404 { error }; neither or both query params → 400.
+assertError(await send(helpGet(helpQuery('code=000000', 'hv3'))), 404, 'unknown code');
+assertError(await send(helpGet(helpQuery('token=nope', 'hp2'))), 404, 'unknown token');
+assertError(await send(helpPut(put({ code: '000000', reply: 'CALL_YOU' }, 'hr5'))), 404, 'reply to unknown code');
+helpRows.get(raised.body.code)!.createdAt -= 30 * 60_000;
+assertError(await send(helpGet(helpQuery(`code=${raised.body.code}`, 'hv3'))), 404, 'expired code');
+assertError(await send(helpGet(helpQuery('', 'hv4'))), 400, 'no query');
+assertError(await send(helpGet(helpQuery(`code=123456&token=x`, 'hv4'))), 400, 'both params');
+
+// Store down → 502 { error }; neither the reply nor the log carries the text, the number or a code.
+const down503 = () => Promise.reject(new Error(`down ${MCB_SCAM} 23057000001`));
+setHelpStore({ add: down503, get: down503, byToken: down503, setReply: down503 });
+const helpLogs: unknown[] = [];
+console.error = (...a: unknown[]) => void helpLogs.push(...a);
+const helpDown = await send(help(post(askHelp, 'h5')));
+console.error = realError;
+assertError(helpDown, 502, 'help store down');
+assert.doesNotMatch(JSON.stringify([helpDown.body, helpLogs.map(String)]), /mcb-secure|5712|23057000001/, 'nothing raw in the reply or the log');
+assertError(await send(helpGet(helpQuery('code=123456', 'hv5'))), 502, 'view store down');
+assertError(await send(helpPut(put({ code: '123456', reply: 'CALL_YOU' }, 'hr6'))), 502, 'reply store down');
+setHelpStore(memoryHelpStore());
+
+// Rate limits: 3 asks per IP per minute (each reaches a phone); the helper view keeps the default 10 (code guessing);
+// the elder's poll every 3 s fits its own bucket.
+for (let i = 0; i < 3; i++) assert.equal((await send(help(post(askHelp, 'h6')))).status, 200);
+assertError(await send(help(post(askHelp, 'h6'))), 429, 'help ask rate limit');
+for (let i = 0; i < 10; i++) assert.equal((await send(helpGet(helpQuery('code=000000', 'hv6')))).status, 404);
+assertError(await send(helpGet(helpQuery('code=000000', 'hv6'))), 429, 'help view rate limit');
+for (let i = 0; i < 20; i++) assert.equal((await send(helpGet(helpQuery('token=nope', 'hv6')))).status, 404, 'a minute of polling is allowed');
 
 console.log('routes ok');

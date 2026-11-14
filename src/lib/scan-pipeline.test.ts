@@ -2,7 +2,7 @@
 // Fakes stand in for Jev, Claude and the evidence lookups, so this runs offline with no keys.
 import assert from 'node:assert/strict';
 import type { ClaudeResult } from './claude.ts';
-import { runScanPipeline, type Deps, type JevResult } from './scan-pipeline.ts';
+import { runScanPipeline, scanEmail, type Deps, type JevResult } from './scan-pipeline.ts';
 
 const DEMO_1 = 'MCB: your account is blocked. Confirm your OTP 482913 at https://mcb-secure-login.com/verify within 24 hours.';
 const DEMO_3 = 'CEB: scheduled maintenance. Power supply will be interrupted in Moka on Sunday from 08:00 to 12:00.';
@@ -13,6 +13,7 @@ const fakes = (over: Partial<Deps> = {}): Deps => ({
   jev: async () => quietJev,
   claude: async () => claudeSays('SAFE'),
   intel: async () => [],
+  phones: async (n) => n.map(() => 'unknown' as const),
   reports: async () => [],
   rag: async () => [],
   ...over,
@@ -70,6 +71,48 @@ const down = async () => {
   assert.ok(seen[0].includes('[PHONE +230]'), 'the sender reaches the models, redacted');
 }
 
+// Phone intel (isMalicious): the raw digits go to the phone lookup only; models see the label and the result.
+// A flagged number lifts a clean message to SUSPICIOUS, never further on its own; an outage keeps the rule verdict.
+{
+  let asked: string[] = [];
+  const seen: string[] = [];
+  const r = await runScanPipeline(
+    { text: 'Hi, please call me back on 5712 3456', sender: '+230 5798 1234' },
+    fakes({
+      phones: async (n) => ((asked = n), n.map((_, i) => (i === 0 ? { level: 'high', score: 80, blacklisted: true } : 'unknown'))),
+      jev: async (t) => (seen.push(t), quietJev),
+      claude: async (t, e) => (seen.push(t, e), claudeSays('SAFE')),
+    }),
+  );
+  assert.deepEqual(asked, ['+23057981234', '57123456'], 'sender first');
+  assert.equal(r.verdict, 'SUSPICIOUS');
+  assert.ok(r.flags.includes('A phone number linked to this message has a record of fraud or spam.'));
+  assert.ok(seen[2].includes("Phone check for the sender's number: isMalicious risk high (80/100), on its blocklist"));
+  assert.ok(!seen[2].includes('Phone check for [PHONE]'), "an unanswered lookup adds no evidence line (Claude's prompt stays as calibrated)");
+  for (const s of [...seen, JSON.stringify(r)]) for (const secret of ['5712', '5798', '3456']) assert.ok(!s.includes(secret), `leaked ${secret}`);
+
+  const hung = await runScanPipeline({ text: DEMO_1 }, fakes({ phones: () => new Promise(() => {}) }));
+  assert.equal(hung.verdict, 'HIGH_RISK', 'a hung phone lookup never blocks or lowers the verdict');
+  assert.equal((await runScanPipeline({ text: 'Call 5712 3456' }, fakes({ phones: down }))).verdict, 'SAFE');
+
+  let emailLookups = 0;
+  await scanEmail('From: "Shop" <a@shop.example>\r\nSubject: Hi\r\n\r\nCall 5712 3456', fakes({ phones: async (n) => ((emailLookups += n.length), []) }));
+  assert.equal(emailLookups, 0, 'Email Guard never sends numbers to isMalicious');
+}
+
+// Claude sees only strong RAG matches: a weak one is not evidence of a scam.
+{
+  let evidence = '';
+  await runScanPipeline(
+    { text: 'Hello there' },
+    fakes({
+      rag: async () => [{ title: 'Strong pattern', score: 0.6 }, { title: 'Weak pattern', score: 0.3 }],
+      claude: async (_t, e) => ((evidence = e), claudeSays('SAFE')),
+    }),
+  );
+  assert.ok(evidence.includes('Strong pattern') && !evidence.includes('Weak pattern'));
+}
+
 // Clarify: a fragment with a missing field asks a question and skips Claude, but never stalls a clear scam.
 {
   let claudeCalls = 0;
@@ -108,6 +151,59 @@ const down = async () => {
   assert.ok(Date.now() - t0 < 3500);
   assert.deepEqual(r.evidence.intel, [{ domain: 'example.org', vt: 'unknown', urlhaus: 'unknown' }]);
   assert.deepEqual(r.evidence.communityReports, []);
+}
+
+// Email Guard (PLAN §6). Hand-written fixtures, fictitious domains; the scam domain is defanged in git and refanged here.
+const refang = (s: string) => s.replace(/\[\.\]/g, '.');
+const SPOOFED_MRA = refang(
+  [
+    'Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=refund-portal[.]top; dkim=none; dmarc=fail header.from=refund-portal[.]top',
+    'From: "MRA Tax Refunds" <noreply@refund-portal[.]top>',
+    'Subject: Your tax refund is ready',
+    '',
+    'Dear taxpayer, you are owed Rs 4,500. Claim it at https://refund-portal[.]top/claim',
+  ].join('\r\n'),
+);
+const NEWSLETTER = [
+  'Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=lagoonbooks.example; dkim=pass header.d=lagoonbooks.example; dmarc=pass header.from=lagoonbooks.example',
+  'From: "Lagoon Books" <news@lagoonbooks.example>',
+  'Subject: New arrivals this week',
+  'List-Unsubscribe: <https://lagoonbooks.example/unsubscribe>',
+  '',
+  'Hello reader, here are this week\'s new novels and a short interview with a local author. See them at https://lagoonbooks.example/new',
+].join('\r\n');
+const jevImportance = (importance: string) => async (_t: string, email?: boolean): Promise<JevResult> => ({ ...quietJev, ...(email && { importance }) });
+
+{
+  let seen = '';
+  const r = await scanEmail(SPOOFED_MRA, fakes({ jev: async (t, email) => ((seen = t), { ...quietJev, importance: email ? 'URGENT' : 'x' }) }));
+  assert.equal(r.verdict, 'HIGH_RISK');
+  assert.ok(r.flags.includes("The sender's name says MRA but the email failed its authenticity check."));
+  assert.equal(r.importance, 'URGENT', 'importance comes from Jev, and Jev was asked on the email path');
+  assert.match(seen, /^From: MRA Tax Refunds \(refund-portal\.top\)\nYour tax refund is ready\n/, 'sender, then subject + body');
+}
+{
+  const r = await scanEmail(NEWSLETTER, fakes({ jev: jevImportance('PROMOTIONAL') }));
+  assert.equal(r.verdict, 'SAFE');
+  assert.equal(r.importance, 'PROMOTIONAL');
+}
+// Jev down, or an answer off the list → ROUTINE; the rule verdict still stands.
+assert.equal((await scanEmail(NEWSLETTER, fakes({ jev: down }))).importance, 'ROUTINE');
+assert.equal((await scanEmail(NEWSLETTER, fakes({ jev: jevImportance('VERY_URGENT') }))).importance, 'ROUTINE');
+assert.equal((await scanEmail(SPOOFED_MRA, fakes({ jev: down, claude: async () => null }))).verdict, 'HIGH_RISK');
+// /api/scan never asks Jev for importance and returns none (its Jev questions stay calibrated).
+{
+  let asked: boolean | undefined;
+  const r = await runScanPipeline({ text: DEMO_3 }, fakes({ jev: async (_t, email) => ((asked = email), quietJev) }));
+  assert.equal(asked, false);
+  assert.equal('importance' in r, false);
+}
+
+// Security review 2026-11-14: a blank Claude advice (parseClaude dropped an injected number or link) uses our wording.
+{
+  const r = await runScanPipeline({ text: DEMO_3 }, fakes({ claude: async () => ({ ...claudeSays('SUSPICIOUS'), advice: '' }) }));
+  assert.equal(r.verdict, 'SUSPICIOUS');
+  assert.match(r.advice, /^Be careful\./);
 }
 
 console.log('scan-pipeline ok');

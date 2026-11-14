@@ -38,4 +38,13 @@ assert.equal(redact('nic a123456789012b'), 'nic [NIC]');
 assert.equal(redact('Reset at www.mcb.mu/reset?token=abc123XYZ now'), 'Reset at www.mcb.mu/reset now');
 assert.equal(redact('Pay Rs 75 by 2 pm'), 'Pay Rs 75 by 2 pm', 'short numbers stay: amounts are a signal');
 
+// Security review 2026-11-14: fullwidth digits are redacted like ASCII ones (NFKC), and a fullwidth domain reads as the real one.
+assert.equal(redact('OTP ４８２９１３ card ４１１１ １１１１ １１１１ １１１１'), 'OTP [CODE] card [CARD]');
+assert.equal(redact('ｍｃｂ．ｍｕ'), 'mcb.mu');
+{
+  const found: { number: string; label: string }[] = [];
+  redact('call ＋２３０ ５７１２ ３４５６', found);
+  assert.deepEqual(found, [{ number: '+23057123456', label: '[PHONE +230]' }], 'fullwidth numbers are collected as ASCII digits');
+}
+
 console.log('redact ok');

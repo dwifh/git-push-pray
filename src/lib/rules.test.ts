@@ -19,7 +19,8 @@ const intel = (domain: string, vt: DomainIntel['vt'], urlhaus: DomainIntel['urlh
 const demo1 = ruleFloor(facts('MCB: your account is blocked. Confirm your OTP at mcb-secure-login.com within 24 hours.'));
 assert.equal(demo1.level, Level.HIGH_RISK);
 assert.ok(demo1.flags.length >= 3, 'lookalike, credential + link, urgency each add a flag');
-const demo2 = 'Mauritius Post: your parcel is held. Pay Rs 75 at parcel-track-mu.com/pay';
+// First-stage lure, no fee yet: content alone is only SUSPICIOUS, so the community report decides (PLAN §11 step 2).
+const demo2 = 'Your parcel is on its way. Track it at parcel-track-mu.com';
 const reported = (n: number) => ({ communityReports: [{ domain: 'parcel-track-mu.com', reporters: n }] });
 assert.equal(level(demo2, reported(2)), Level.SUSPICIOUS);
 assert.equal(level(demo2, reported(3)), Level.HIGH_RISK, '3rd distinct reporter: community zero-day');
