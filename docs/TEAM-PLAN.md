@@ -62,10 +62,51 @@ Backend 1 makes these the real types in `src/shared/types.ts`. Any change is ann
 **Implementation pointers:**
 - Routes: tabs in `src/app/_layout.tsx`; screens are `index.tsx` (Scan), `coach.tsx`, `feed.tsx` and `email.tsx`. Components go in `src/components/`, never `src/app/`. Check the SDK 58 Expo Router docs before using a navigator API; the `expo-router` skill helps.
 - Calls: `fetch('/api/scan', { method: 'POST', body: JSON.stringify({ text, sender }) })`. Relative URLs work on the web build. On `!res.ok`, show `body.error`.
-- Storage: `trustedContact` (E.164 digits, the helper's number), `firstName`, `helperName` and `role` (`elder` | `helper`) in `globalThis.localStorage`, every read and write wrapped in `try/catch`. Also keep an open help `token` there so a reload keeps polling.
+- Storage: the profile (`role`, `firstName`, `helperName`, `trustedContact`) goes through `src/shared/profile.ts` only (§4.1), never raw `localStorage`. Keep an open help `token` in `localStorage` yourself (in `try/catch`) so a reload keeps polling.
 - Helping Hands screens: PLAN §7.3 step by step. Reply labels come from `HELP_REPLY_LABEL` in `src/shared/types.ts`; hide "It's genuine" on `HIGH_RISK`. Poll `GET /api/help?token=` every 3 s and stop on a reply, a 404 or after 30 min.
 - Links: `Linking.openURL` from `react-native` for `tel:999`, `https://wa.me/<number>?text=<encoded>` and MAUCORS. A `wa.me` text never contains the scam link.
 - The demo is the web PWA. Test in Chrome device mode at 360 × 800. Check that any icon library you use renders on web.
+
+### 4.1 Device profile: `src/shared/profile.ts` (Anjali: setup; Jasveer + Anjali: Scan and Coach read it)
+
+There are no user accounts. Who uses the phone and who their helper is lives in this browser's `localStorage` only. The server receives the helper's number with each send and never stores it (CLAUDE.md). All three functions **never throw**.
+
+```ts
+import { loadProfile, saveProfile, clearProfile, type Profile } from '@/shared/profile';
+
+type Profile =
+  | { role: 'helper' }                                    // the helper's own phone: nothing else is needed
+  | { role: 'elder'; firstName: string; helperName: string; trustedContact: string }; // trustedContact = E.164 digits
+
+loadProfile(): Profile | null           // null → show the first-launch role choice
+saveProfile(form): { ok: true; profile } | { ok: false; field?: 'role' | 'firstName' | 'helperName' | 'trustedContact'; error: string }
+clearProfile(): void                    // "Change setup" in a settings corner
+```
+
+**First launch (no profile)**: two huge buttons, one decision.
+- **"I'm helping someone"** → `saveProfile({ role: 'helper' })` → normal app plus the Helper tab (enter a 6-digit code).
+- **"I'm setting this up for someone"** (the helper, holding the elder's phone) → one field per screen: *Your name* (`helperName`), *Your WhatsApp number* (`trustedContact`), *Their first name* (`firstName`). Then `saveProfile({ role: 'elder', firstName, helperName, trustedContact })` → Elder mode (PLAN §7.3 step 1).
+
+**Saving the form**
+- Pass the raw text the person typed. `saveProfile` trims names and turns the number into digits: `5712 3456`, `+230 5712 3456` and `00230 5712 3456` all become `23057123456`; `+44 (0)7700 900123` becomes `447700900123`.
+- On `ok: false`, show `error` under the input named by `field` and keep what they typed. No `field` means the phone refused to save (private browsing): show `error` at the top.
+- Names: 1–30 characters; no digits, links or line breaks. Hyphens, apostrophes, accents and spaces are fine (`Marie-Claire`, `D'Souza`, `Zoë`). These rules match what WhatsApp sends accept, so a name that saves is a name that sends.
+- After saving, show the number back in a readable form (`+230 5712 3456`) and ask "Is this right?", with **Yes** / **Change**. A wrong digit means the elder's alerts go to a stranger.
+
+**Using it**
+- Read it with `loadProfile()` when the screen opens; don't copy it into global state that can go stale after "Change setup".
+- Scan "Ask my helper": `askHelper({ elderName: p.firstName, to: p.trustedContact, text, sender, verdict })`. The button label is `Ask ${p.helperName} to check`.
+- Coach HANG UP "Alert helper": `sendAlert({ template: 'call_alert', to: p.trustedContact, vars: [p.firstName, flag] })`.
+- `tel:` button: `tel:+${p.trustedContact}`.
+- If `loadProfile()` returns `null` or `{ role: 'helper' }`, hide every "Ask / Alert / Call helper" button. Never show a button that cannot work.
+
+**Don'ts**
+- Never send the profile anywhere except as `to` / `elderName` in those two calls. Never log it or put it in a URL other than `wa.me` / `tel:`.
+- Never read or write the `scamshield.profile` key directly. A hand-edited or corrupt value comes back as `null` from `loadProfile`, which is what you want.
+
+**Limits to say out loud in the demo**: clearing browser data, or a new phone, means setting up again; "Add to Home Screen" keeps iOS from clearing it. Syncing across phones is what accounts would add (next).
+
+Mocks: `saveProfile` takes an optional second argument, a storage object `{ getItem, setItem, removeItem }`, so a screen test or Storybook can pass an in-memory one. See `src/shared/profile.test.ts`.
 
 ## 5. Backend datasets, by priority
 
