@@ -5,7 +5,7 @@ Mobile-first Expo PWA that protects everyday Mauritians, especially elderly peop
 **Read `docs/PLAN.md` before writing any feature code.** It holds the locked decisions, the module map, the verdict rules and the ordered build steps. Port reusable code from `docs/PORTED-CODE.md` rather than rewriting it.
 
 ## Stack
-- Expo + React Native + Expo Router, `web.output: "server"`. **Demo target is the web PWA only**, deployed on EAS Hosting (Cloudflare Workers runtime: no filesystem writes, no native Node modules, use `fetch` + Web Crypto).
+- Expo + React Native + Expo Router, `web.output: "server"`. **Two clients, one backend** (D1, D17): the web PWA, deployed on EAS Hosting (Cloudflare Workers runtime: no filesystem writes, no native Node modules, use `fetch` + Web Crypto), and the **ScamGuard Android app** (same codebase, EAS cloud build, sideloaded APK: share a message into it, sticky notification, danger alert; PLAN §7.4). Native calls the same deployed API routes.
 - Backend: Expo Router API routes `src/app/api/*+api.ts`.
 - LLMs and embeddings via OpenRouter (`openai` SDK + raw `fetch`). Persistence: Turso (`@libsql/client/web`) with in-memory fallback.
 
@@ -19,7 +19,7 @@ Mobile-first Expo PWA that protects everyday Mauritians, especially elderly peop
 3. **Scam Feed** (shallow): ranked list/bars of active campaigns by institution and district; rate-limited anonymous reports.
 4. **Email Guard** (shallow): paste raw headers/`.eml` → importance (`URGENT | ROUTINE | PROMOTIONAL`) + phishing verdict + human-in-the-loop review card.
 
-Out of scope, mention only as "next": inbound WhatsApp (webhook) scanning, SMS interception, native share-sheet, native builds, IMAP/Gmail OAuth, live call audio, user accounts.
+Out of scope, mention only as "next": inbound WhatsApp (webhook) scanning, SMS interception, reading other apps' notifications, floating overlays over other apps, iOS native build, Play Store release, push from the server, IMAP/Gmail OAuth, live call audio, user accounts.
 
 ## Pipeline — `runScanPipeline()` in `src/lib/scan-pipeline.ts`
 Shared by `/api/scan` and `/api/email`. Order is fixed:
@@ -58,6 +58,7 @@ There is no Tier 2 and no tool loop. Nemotron/flint and the old emergency-safety
 - Server env comes from EAS at deploy time, not from `.env`. After changing a key: `npx eas-cli@latest env:set --name K --value V --environment production --visibility sensitive --non-interactive` (no `--force` flag), then redeploy. Hosting cannot read `secret` visibility; use `sensitive`. Never print env values.
 - EAS login from this terminal: `eas login --device --non-interactive` (interactive prompts fail here).
 - Tabs come from `expo-router/js-tabs`; importing `Tabs` from `expo-router` is deprecated.
+- Android: `npx eas-cli@latest build -p android --profile preview` (cloud build, APK). No local Android SDK on this machine. Deploy the web/API first: the APK calls the deployed routes.
 
 ## Workflow
 - Docs: `docs/PLAN.md` (§0 status, decisions, build order), `docs/PORTED-CODE.md`, `docs/TEAM-PLAN.md` (who owns what, API contract, datasets), `docs/WHATSAPP-TEMPLATES.md`.
