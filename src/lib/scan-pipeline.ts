@@ -152,7 +152,7 @@ export async function runScanPipeline(
     verdict,
     flags: [...new Set([...floor.flags, ...jevFlags, ...(claude?.redFlags ?? []), ...(incomplete ? [INCOMPLETE] : [])])],
     // SAFE always uses our wording: a model's "this is safe" must never reach the card (CLAUDE.md UX rules).
-    advice: useClaudeText && verdict !== 'SAFE' ? claude.advice : ADVICE[verdict],
+    advice: useClaudeText && verdict !== 'SAFE' && claude.advice ? claude.advice : ADVICE[verdict], // blank = parseClaude dropped it
     scamType: useClaudeText ? claude.scamType : '',
     ...(clarify && { clarify }),
     ...(email && { importance: isOneOf(IMPORTANCES, jev?.importance) ? jev.importance : DEFAULT_IMPORTANCE }),

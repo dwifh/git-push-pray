@@ -22,6 +22,8 @@ export type FoundPhone = { number: string; label: string }; // number: digits wi
 // phones: optional collector for phone-intel.ts, so only what is redacted as a phone (never a card or NIC) can be looked up.
 export function redact(text: string, phones?: FoundPhone[]) {
   const phone = (m: string, label: string) => (phones?.push({ number: m.replace(/[^\d+]/g, ''), label }), label);
+  // The digit rules are ASCII \d: NFKC first turns fullwidth "４８２９１３" (and "ｍｃｂ．ｍｕ", as a browser would) into ASCII.
+  text = text.normalize('NFKC');
   const hosts: string[] = [];
   // Private-use sentinel with no digits, so later digit rules never touch a stashed host.
   const stash = (host: string) => `${String.fromCharCode(0xe100 + hosts.push(host) - 1)}`;

@@ -1,6 +1,14 @@
 // Server-only. Tier 3 (PLAN §3.4): one call, no tools, strict JSON, untrusted text passed as data.
 // Any failure returns null; the pipeline then keeps the rule + Jev result.
+import { carriesLink, hasDigitRun } from '../shared/messages.ts';
 import { VERDICTS, isOneOf, type Verdict } from '../shared/types.ts';
+
+// Prompt injection can steer the wording, never the verdict (max rule). So model text that could send the reader
+// somewhere is dropped: no phone number anywhere (7+ digits: the shortest Mauritian number), no link in the advice.
+// Flags may name a domain: they show as plain text, and "the link goes to mcb-login.com" is the warning itself.
+const clean = (s: string, max: number) => s.replace(/\p{Cf}/gu, '').slice(0, max); // zero-width and bidi characters
+const callable = (s: string) => hasDigitRun(s, 7);
+const sendsSomewhere = (s: string) => callable(s) || carriesLink(s);
 
 export const CLAUDE_MODEL = '~anthropic/claude-sonnet-latest';
 export type ClaudeResult = { verdict: Verdict; redFlags: string[]; scamType: string; advice: string };
@@ -34,15 +42,16 @@ export function parseClaude(raw: unknown): ClaudeResult | null {
       r.redFlags.every((f: unknown) => typeof f === 'string') &&
       typeof r.scamType === 'string' &&
       typeof r.advice === 'string';
-    // Over-long text is cut, not rejected: dropping the whole answer would also drop a real HIGH_RISK verdict.
-    return ok
-      ? {
-          verdict: r.verdict,
-          redFlags: r.redFlags.slice(0, 5).map((f: string) => f.slice(0, 120)),
-          scamType: r.scamType.slice(0, 80),
-          advice: r.advice.slice(0, 300),
-        }
-      : null;
+    // Over-long or unsafe text is cut or blanked, not rejected: dropping the whole answer would also drop a real HIGH_RISK verdict.
+    // A blank advice makes the pipeline use our fixed wording.
+    if (!ok) return null;
+    const advice = clean(r.advice, 300), scamType = clean(r.scamType, 80);
+    return {
+      verdict: r.verdict,
+      redFlags: r.redFlags.slice(0, 5).map((f: string) => clean(f, 120)).filter((f: string) => f.trim() && !callable(f)),
+      scamType: sendsSomewhere(scamType) ? '' : scamType,
+      advice: sendsSomewhere(advice) ? '' : advice,
+    };
   } catch {
     return null;
   }

@@ -40,14 +40,27 @@ ${TRUSTED}`,
 export type TemplateName = keyof typeof TEMPLATES;
 
 // PLAN D15: we never spread a link. Any word.word counts as a domain, so "my.t" is refused too.
-const LINKY = /h[tx]{2}ps?:|www\.|\w\.\w|\[\.\]|\(\.\)/i; // defanged links too: we never spread a scam link
+// Any script's letters, and the ideographic full stop, so "мсб.му" and "mcb。mu" count as well.
+const LINKY = /h[tx]{2}ps?:|www\.|[\p{L}\p{N}_][.。][\p{L}\p{N}_]|\[\.\]|\(\.\)/iu; // defanged links too
 
-/** Throws if a variable could carry a link, a second line or too much text. */
+/**
+ * Could `s` carry a link once a phone or browser displays it? NFKC folds look-alikes ("mcb．mu" → "mcb.mu");
+ * zero-width and bidi characters (\p{Cf}) are refused outright, since they can hide a dot or reverse text.
+ */
+export const carriesLink = (s: string) => /\p{Cf}/u.test(s) || LINKY.test(s.normalize('NFKC'));
+
+/** `min` or more digits in any script, allowing up to 2 separators between them ("5712 3456", "+230-5712-3456"). */
+export const hasDigitRun = (s: string, min: number) => new RegExp(`(?:\\p{Nd}[^\\p{L}\\p{N}]{0,2}){${min - 1}}\\p{Nd}`, 'u').test(s);
+
+/** Throws if a variable could carry a link, a phone number, a second line or too much text. */
 export function validateVars(name: TemplateName, vars: string[]): void {
   const max = TEMPLATES[name].maxLengths;
   if (vars.length !== max.length) throw new Error(`${name} needs ${max.length} variables`);
   vars.forEach((v, i) => {
-    if (typeof v !== 'string' || !v.trim() || v.length > max[i] || /[\r\n\t]/.test(v) || LINKY.test(v)) {
+    // help_request {{2}} is the server-made code; every other variable is client text, so it never holds a callback number.
+    const isCode = name === 'help_request' && i === 1;
+    const ok = isCode ? /^\d{6}$/.test(v) : typeof v === 'string' && !!v.trim() && !hasDigitRun(v, 5);
+    if (!ok || v.length > max[i] || /[\r\n\t]/.test(v) || carriesLink(v)) {
       throw new Error(`Variable ${i + 1} is not allowed`);
     }
   });

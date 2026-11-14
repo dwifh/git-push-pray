@@ -199,4 +199,11 @@ assert.equal((await scanEmail(SPOOFED_MRA, fakes({ jev: down, claude: async () =
   assert.equal('importance' in r, false);
 }
 
+// Security review 2026-11-14: a blank Claude advice (parseClaude dropped an injected number or link) uses our wording.
+{
+  const r = await runScanPipeline({ text: DEMO_3 }, fakes({ claude: async () => ({ ...claudeSays('SUSPICIOUS'), advice: '' }) }));
+  assert.equal(r.verdict, 'SUSPICIOUS');
+  assert.match(r.advice, /^Be careful\./);
+}
+
 console.log('scan-pipeline ok');
