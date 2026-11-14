@@ -20,12 +20,12 @@ function Pick<K extends string>({ label, keys, name, value, onChange }: {
   );
 }
 
-export function ReportForm({ onDone }: { onDone: (sent: boolean) => void }) {
+export function ReportForm({ onDone, vector: v, domain: d }: { onDone: (sent: boolean) => void; vector?: string; domain?: string }) {
   const t = useTheme();
   const [institution, setInstitution] = useState<Institution>();
-  const [vector, setVector] = useState<Vector>();
+  const [vector, setVector] = useState<Vector | undefined>(VECTORS.find((k) => k === v));
   const [district, setDistrict] = useState<District>();
-  const [domain, setDomain] = useState('');
+  const [domain, setDomain] = useState(d ?? '');
   const [snippet, setSnippet] = useState('');
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | { error: string }>('idle');
 

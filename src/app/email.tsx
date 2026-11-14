@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { post } from '@/shared/api';
-import { AlertOverlay, alertPalette, Btn, Flags, Pill, styles, ThemeToggle } from '@/components/scan-ui';
-import { FONT_DISPLAY, useTheme, verdictStyle, type Theme } from '@/shared/theme';
+import { AlertOverlay, alertPalette, Btn, Flags, Pill, styles } from '@/components/scan-ui';
+import { FONT, useTheme, verdictStyle, type Theme } from '@/components/theme';
+import { Intro, Screen, ThemeToggle } from '@/components/ui';
 import { LIMITS, type EmailResult, type Importance } from '@/shared/types';
 
-type State = { kind: 'idle' } | { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'result'; result: EmailResult; released: boolean } | { kind: 'deleted' };
+type State = { kind: 'idle' } | { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'result'; result: EmailResult; released: boolean; reported: boolean } | { kind: 'deleted' };
 
 const IMPORTANCE: Record<Importance, string> = { URGENT: 'Urgent', ROUTINE: 'Routine', PROMOTIONAL: 'Promotional' };
 
@@ -24,26 +25,44 @@ export default function Email() {
   const s = styles(t);
   const [raw, setRaw] = useState('');
   const [state, setState] = useState<State>({ kind: 'idle' });
+  const [started, setStarted] = useState(false);
   const tooLong = raw.length > LIMITS.emailRaw;
+
+  if (!started) {
+    return (
+      <Intro
+        eyebrow="Email Guard"
+        title="Got a strange email?"
+        icon="mail"
+        chips={['Sender', 'Links', 'Phishing', 'Urgent?']}
+        steps={[
+          'Paste the email headers or the whole email, or open a saved .eml file.',
+          'We check who really sent it and whether it looks like phishing.',
+          'You see how important it is and whether to keep it, delete it or report it.',
+        ]}
+        button="Check an email"
+        onStart={() => setStarted(true)}
+      />
+    );
+  }
 
   async function check() {
     setState({ kind: 'loading' });
     const res = await post<EmailResult>('/api/email', { raw });
     if ('error' in res) return setState({ kind: 'error', message: res.error }); // keep the text so they can retry
-    setRaw(''); // checked: clear the box for the next email
-    setState({ kind: 'result', result: res, released: false });
+    setState({ kind: 'result', result: res, released: false, reported: false }); // the email stays in the box until they delete it
   }
-  const quarantined = state.kind === 'result' && state.result.verdict !== 'SAFE' && !state.released;
+  const quarantined = state.kind === 'result' && state.result.verdict !== 'SAFE' && !state.released && !state.reported;
 
   return (
     <View style={{ flex: 1 }}>
-    <ScrollView style={s.page} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+    <Screen>
       <View style={s.header}>
         <View style={{ flex: 1 }}>
           <Text style={s.greet}>Email Guard</Text>
           <Text style={s.title}>Got a strange email?</Text>
         </View>
-        <ThemeToggle t={t} />
+        <ThemeToggle />
       </View>
       <Text style={s.muted}>Paste the email headers or the whole email. We check who really sent it and whether it is a scam.</Text>
 
@@ -87,14 +106,15 @@ export default function Email() {
         </View>
       )}
 
-      {state.kind === 'result' && !quarantined && <ResultView t={t} result={state.result} released={state.released} />}
-    </ScrollView>
+      {state.kind === 'result' && !quarantined && <ResultView t={t} result={state.result} released={state.released} onDelete={() => { setRaw(''); setState({ kind: 'deleted' }); }} />}
+    </Screen>
 
     {state.kind === 'result' && quarantined && (
       <Quarantine
         result={state.result}
-        onDelete={() => setState({ kind: 'deleted' })}
-        onReport={() => router.push({ pathname: '/feed', params: { vector: 'EMAIL', domain: state.result.evidence.domains[0] ?? '' } })}
+        onDelete={() => { setRaw(''); setState({ kind: 'deleted' }); }}
+        // Close the Modal first, or it stays on top of Feed.
+        onReport={() => { setState({ ...state, reported: true }); router.push({ pathname: '/feed', params: { report: Date.now(), vector: 'EMAIL', domain: state.result.evidence.domains[0] ?? '' } }); }}
         onRelease={() => setState({ ...state, released: true })}
         onClose={() => setState({ kind: 'idle' })}
       />
@@ -120,7 +140,7 @@ function Quarantine({ result, onDelete, onReport, onRelease, onClose }: {
           <Text style={{ fontSize: 52, color: P.onSolid }}>✉</Text>
         </View>
       </View>
-      <Text style={{ color: P.fg, fontSize: 38, fontWeight: '800', textAlign: 'center', fontFamily: FONT_DISPLAY }}>QUARANTINED</Text>
+      <Text style={{ color: P.fg, fontSize: 38, fontWeight: '800', textAlign: 'center', fontFamily: FONT.display }}>QUARANTINED</Text>
       <Text style={{ color: P.fg, fontSize: 18, lineHeight: 26, textAlign: 'center' }}>
         This email needs your review. Do not click its links, open attachments or reply.
       </Text>
@@ -135,14 +155,14 @@ function Quarantine({ result, onDelete, onReport, onRelease, onClose }: {
         </View>
       )}
       <Pressable accessibilityRole="button" onPress={onDelete} style={{ alignSelf: 'stretch', minHeight: 60, borderRadius: 18, backgroundColor: P.solid, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: P.onSolid, fontSize: 19, fontWeight: '700', fontFamily: FONT_DISPLAY }}>🗑  Delete from your email inbox</Text>
+        <Text style={{ color: P.onSolid, fontSize: 19, fontWeight: '700', fontFamily: FONT.display }}>🗑  Delete from your email inbox</Text>
       </Pressable>
       <View style={{ flexDirection: 'row', gap: 12, alignSelf: 'stretch' }}>
         <Pressable accessibilityRole="button" onPress={onReport} style={outline}>
-          <Text style={{ color: P.fg, fontSize: 18, fontWeight: '700', fontFamily: FONT_DISPLAY }}>Report</Text>
+          <Text style={{ color: P.fg, fontSize: 18, fontWeight: '700', fontFamily: FONT.display }}>Report</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onRelease} style={outline}>
-          <Text style={{ color: P.fg, fontSize: 16, fontWeight: '700', textAlign: 'center', fontFamily: FONT_DISPLAY }}>I recognise this sender</Text>
+          <Text style={{ color: P.fg, fontSize: 16, fontWeight: '700', textAlign: 'center', fontFamily: FONT.display }}>I recognise this sender</Text>
         </Pressable>
       </View>
       <View style={{ alignSelf: 'stretch', backgroundColor: P.dim, borderRadius: 16, padding: 16, gap: 6 }}>
@@ -156,7 +176,7 @@ function Quarantine({ result, onDelete, onReport, onRelease, onClose }: {
   );
 }
 
-function ResultView({ t, result, released }: { t: Theme; result: EmailResult; released: boolean }) {
+function ResultView({ t, result, released, onDelete }: { t: Theme; result: EmailResult; released: boolean; onDelete: () => void }) {
   const s = styles(t);
   const v = verdictStyle(t, result.verdict);
   return (
@@ -173,6 +193,7 @@ function ResultView({ t, result, released }: { t: Theme; result: EmailResult; re
         <Text style={s.body}>{result.advice}</Text>
         {result.clarify && <Text style={s.muted}>{result.clarify}</Text>}
       </View>
+      {result.verdict !== 'SAFE' && <Btn t={t} primary label="🗑  Delete from your email inbox" onPress={onDelete} />}
     </View>
   );
 }

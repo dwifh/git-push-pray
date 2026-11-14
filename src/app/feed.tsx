@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ReportForm } from '@/components/ReportForm';
@@ -14,6 +15,11 @@ export default function Feed() {
   const [error, setError] = useState('');
   const [reporting, setReporting] = useState(false);
   const [reload, setReload] = useState(0);
+  // Scan/Email "Warn others"/"Report" send ?report=<time>&vector&domain: open the report form, prefilled.
+  const { report, vector, domain } = useLocalSearchParams<{ report?: string; vector?: string; domain?: string }>();
+  useEffect(() => {
+    if (report) setReporting(true);
+  }, [report]);
 
   useEffect(() => {
     let live = true;
@@ -23,7 +29,7 @@ export default function Feed() {
     return () => { live = false; };
   }, [reload]);
 
-  if (reporting) return <ReportForm onDone={(sent) => { setReporting(false); if (sent) setReload((n) => n + 1); }} />;
+  if (reporting) return <ReportForm vector={vector} domain={domain} onDone={(sent) => { setReporting(false); if (sent) setReload((n) => n + 1); }} />;
 
   const top = data?.byInstitution[0];
   const total = data?.byInstitution.reduce((n, r) => n + r.count, 0) ?? 0;

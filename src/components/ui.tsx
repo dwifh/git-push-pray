@@ -124,6 +124,38 @@ export function Orb({ color, children, chips = [], size = 140 }: { color: string
   );
 }
 
+// Start screen before a tool, like Coach's: what it does in numbered steps, then one button.
+export function Intro({ eyebrow, title, icon, chips, steps, button, onStart }: {
+  eyebrow: string; title: string; icon: IconName; chips: string[]; steps: string[]; button: string; onStart: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <Screen>
+      <View style={s.introHead}>
+        <View style={{ gap: 4, flex: 1 }}>
+          <Eyebrow>{eyebrow}</Eyebrow>
+          <Title>{title}</Title>
+        </View>
+        <ThemeToggle />
+      </View>
+      <Orb color={t.teal} chips={chips}>
+        <Ionicons name={icon} size={72} color={t.onTeal} />
+      </Orb>
+      <Card>
+        {steps.map((x, i) => (
+          <View key={x} style={s.step}>
+            <View style={[s.stepNum, { backgroundColor: t.tealSoft }]}>
+              <Text style={[s.stepNumText, { color: t.teal }]}>{i + 1}</Text>
+            </View>
+            <Text style={[s.body, { color: t.text, flex: 1 }]}>{x}</Text>
+          </View>
+        ))}
+      </Card>
+      <Button label={button} icon="arrow-forward" onPress={onStart} />
+    </Screen>
+  );
+}
+
 // "Recent checks" style row: dot · text · coloured status word on the right.
 export function Row({ dot, label, status, statusColor }: { dot: string; label: string; status?: string; statusColor?: string }) {
   const t = useTheme();
@@ -203,5 +235,9 @@ const s = StyleSheet.create({
   label: { fontFamily: FONT.body, fontSize: 19, fontWeight: '800' },
   input: { fontFamily: FONT.body, minHeight: 56, borderWidth: 1.5, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, fontSize: 19, textAlignVertical: 'top' },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  introHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  step: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  stepNum: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  stepNumText: { fontFamily: FONT.display, fontSize: 18, fontWeight: '700' },
   errorText: { fontFamily: FONT.body, fontSize: 18, fontWeight: '700', flex: 1 },
 });

@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState, useSyncExternalStore } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ContactSettings } from '@/components/ContactSettings';
 import { HangUp } from '@/components/HangUp';
@@ -30,6 +31,11 @@ export default function Coach() {
   const greeting = useSyncExternalStore(noSubscribe, greet, () => 'Hello');
 
   const restart = () => { setStep('intro'); setAnswers({}); setServerScore(undefined); setSaid(''); setCheck('idle'); };
+  // Scan's "I answered by mistake" sends ?start=<time>: go straight to question 1.
+  const { start } = useLocalSearchParams<{ start?: string }>();
+  useEffect(() => {
+    if (start) { restart(); setSettings(false); setStep(0); }
+  }, [start]);
 
   if (settings) return <ContactSettings onDone={() => setSettings(false)} />;
   // Scored on-device after every tap: the warning shows the moment the cutoff is reached (PLAN §4 short-circuit).

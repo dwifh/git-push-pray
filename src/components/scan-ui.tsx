@@ -1,7 +1,7 @@
 // Shared building blocks for the Scan and Email screens (same look, one place).
 import type { ReactNode } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { FONT_DISPLAY, gridBackground, toggleTheme, type Theme } from '@/shared/theme';
+import { FONT, type Theme } from './theme';
 import type { Verdict } from '@/shared/types';
 
 // Full-screen warning palettes: red for HIGH_RISK (same as Coach "HANG UP NOW"), yellow for SUSPICIOUS.
@@ -20,14 +20,6 @@ export function AlertOverlay({ p, onClose, children }: { p: AlertPalette; onClos
         {children}
       </ScrollView>
     </Modal>
-  );
-}
-
-export function ThemeToggle({ t }: { t: Theme }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={t.scheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onPress={toggleTheme} style={styles(t).iconBtn}>
-      <Text style={{ fontSize: 22, color: t.scheme === 'dark' ? t.amber : t.text }}>{t.scheme === 'dark' ? '☀' : '☾'}</Text>
-    </Pressable>
   );
 }
 
@@ -63,22 +55,19 @@ export function Btn({ t, label, onPress, primary, disabled }: { t: Theme; label:
           ? { backgroundImage: `linear-gradient(90deg, ${t.teal}, ${t.tealDeep})`, boxShadow: `0 6px 24px ${t.teal}40` }
           : {}),
       }}>
-      <Text style={{ color: primary ? t.onTeal : t.text, fontSize: 19, fontWeight: '700', fontFamily: FONT_DISPLAY }}>{label}</Text>
+      <Text style={{ color: primary ? t.onTeal : t.text, fontSize: 19, fontWeight: '700', fontFamily: FONT.display }}>{label}</Text>
     </Pressable>
   );
 }
 
 export const styles = (t: Theme) =>
   StyleSheet.create({
-    page: { flex: 1, backgroundColor: t.bg, ...gridBackground(t) },
-    content: { paddingHorizontal: 20, paddingTop: 36, paddingBottom: 40, gap: 14, maxWidth: 560, width: '100%', alignSelf: 'center' },
     header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     greet: { color: t.muted, fontSize: 18 },
-    iconBtn: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: t.card, borderWidth: 1, borderColor: t.border },
     section: { color: t.muted, fontWeight: '800', letterSpacing: 2, fontSize: 14, marginTop: 6 },
     eyebrow: { color: t.orange, fontWeight: '800', letterSpacing: 2, fontSize: 14 },
-    title: { color: t.text, fontSize: 30, fontWeight: '700', fontFamily: FONT_DISPLAY },
-    h2: { color: t.text, fontSize: 21, fontWeight: '700', fontFamily: FONT_DISPLAY },
+    title: { color: t.text, fontSize: 30, fontWeight: '700', fontFamily: FONT.display },
+    h2: { color: t.text, fontSize: 21, fontWeight: '700', fontFamily: FONT.display },
     body: { color: t.text, fontSize: 18, lineHeight: 26 },
     muted: { color: t.muted, fontSize: 17, lineHeight: 24 },
     small: { fontSize: 15 },

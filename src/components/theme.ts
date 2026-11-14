@@ -1,17 +1,18 @@
 import { useSyncExternalStore } from 'react';
 import { useColorScheme } from 'react-native';
+import type { Verdict } from '@/shared/types';
 
 // Teal = safe actions, orange = danger, indigo = neutral. Text/background pairs checked for ≥ 4.5:1 contrast.
 const dark = {
   bg: '#060B14', card: '#0F1626', cardHi: '#141D30', border: '#1F2A40', text: '#F1F5F9', muted: '#9AA8BC',
   teal: '#4FE0C4', tealDeep: '#2BB89E', onTeal: '#04231D', tealSoft: '#0E2A2A',
-  orange: '#FF7A45', orangeDeep: '#E5531F', onOrange: '#1A0A03', orangeSoft: '#2A1712',
+  orange: '#FF7A45', orangeDeep: '#E5531F', onOrange: '#1A0A03', orangeSoft: '#2A1712', amber: '#FBBF24',
   blue: '#8B9CFF', blueSoft: '#1A2147', purple: '#6D4C9F', purpleSoft: '#1E1830', grid: 'rgba(148,163,184,0.06)',
 };
 const light: typeof dark = {
   bg: '#F1F4F9', card: '#FFFFFF', cardHi: '#F7F9FC', border: '#D5DDE8', text: '#0B1220', muted: '#56657B',
   teal: '#0B7A66', tealDeep: '#08624F', onTeal: '#FFFFFF', tealSoft: '#E3F5F1',
-  orange: '#C2410C', orangeDeep: '#9A3412', onOrange: '#FFFFFF', orangeSoft: '#FFEDE5',
+  orange: '#C2410C', orangeDeep: '#9A3412', onOrange: '#FFFFFF', orangeSoft: '#FFEDE5', amber: '#A15C07',
   blue: '#2B4FD6', blueSoft: '#E6EBFF', purple: '#6D4C9F', purpleSoft: '#F1ECFA', grid: 'rgba(15,23,42,0.05)',
 };
 
@@ -66,3 +67,11 @@ export const ALARM = { bg: '#8E1B14', glow: '#FF7A45', text: '#FFFFFF', soft: 'r
 // Cast because React Native's style types don't list backgroundImage.
 export const css = (style: Record<string, string>) => style as object;
 export const glow = (color: string, size = 28) => css({ boxShadow: `0 0 ${size}px ${color}66` });
+
+// A verdict colour always travels with a word and an icon (UI rules).
+export const verdictStyle = (t: Theme, v: Verdict) =>
+  ({
+    SAFE: { color: t.blue, label: 'No known scam signs found', icon: '✓' },
+    SUSPICIOUS: { color: t.amber, label: 'Suspicious', icon: '!' },
+    HIGH_RISK: { color: t.orange, label: 'High risk', icon: '⚠' },
+  })[v];

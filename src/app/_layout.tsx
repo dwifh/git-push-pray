@@ -18,9 +18,9 @@ export default function RootLayout() {
         headerTintColor: t.text,
         sceneStyle: { backgroundColor: t.bg },
       }}>
-      <Tabs.Screen name="home" options={{ title: 'Home', headerShown: false, tabBarIcon: ({ color }) => <Ionicons name="home" size={26} color={color as string} /> }} />
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color }) => <Ionicons name="home" size={26} color={color as string} /> }} />
       <Tabs.Screen
-        name="index"
+        name="scan"
         options={{
           title: 'Scan',
           // The orange scan button from the design; the word stays below it.
