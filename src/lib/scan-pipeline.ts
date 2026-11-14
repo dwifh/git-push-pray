@@ -7,6 +7,7 @@ import { CLAUDE_MODEL, callClaude, type ClaudeResult } from './claude.ts';
 import { parseHeaders, type EmailFacts } from './email.ts';
 import { extractDomains, registrableDomain } from './extract.ts';
 import { JEV_MODEL, callJevDecision, type JevQuestion } from './jev.ts';
+import { checkPhone, describePhone, phonesToCheck, type PhoneIntel, type PhoneResult } from './phone-intel.ts';
 import { checkDomain } from './threat-intel.ts';
 import { searchKnowledgeBase } from './rag.ts';
 import { redact } from './redact.ts';
@@ -30,6 +31,7 @@ export type Deps = {
   jev: (text: string, email?: boolean) => Promise<JevResult | null>; // email: also ask `importance`
   claude: (text: string, evidence: string) => Promise<ClaudeResult | null>;
   intel: (hosts: string[]) => Promise<DomainIntel[]>;
+  phones: (numbers: string[]) => Promise<PhoneResult[]>; // one result per number, same order
   reports: (domains: string[]) => Promise<{ domain: string; reporters: number }[]>; // registrable domains
   rag: (text: string) => Promise<{ title: string; score: number }[]>;
 };
@@ -75,6 +77,7 @@ export const LIVE_DEPS: Deps = {
   jev: liveJev,
   claude: callClaude,
   intel: (hosts) => Promise.all(hosts.slice(0, MAX_INTEL_HOSTS).map(async (domain) => ({ domain, ...(await checkDomain(domain)) }))),
+  phones: (numbers) => Promise.all(numbers.map((n) => checkPhone(n))),
   reports: (domains) => communityReports(domains),
   // Title and score only: the ScanResult contract, and the KB text never needs to reach the client.
   rag: async (text) => (await searchKnowledgeBase(text)).map(({ title, score }) => ({ title, score })),
@@ -91,7 +94,7 @@ async function withTimeout<T>(run: () => Promise<T>, fallback: T) {
 }
 
 export async function runScanPipeline(
-  input: ScanRequest & { emailFacts?: EmailFacts },
+  input: ScanRequest & { emailFacts?: EmailFacts; atLeast?: Verdict }, // atLeast: a verdict already shown (/api/help); can only raise
   deps: Deps = LIVE_DEPS,
 ): Promise<ScanResult & { importance?: Importance }> {
   const email = input.emailFacts;
@@ -102,14 +105,18 @@ export async function runScanPipeline(
   const domains = extractDomains(text);
   const registrable = [...new Set(domains.map(registrableDomain))];
   const unknownIntel = domains.map((domain): DomainIntel => ({ domain, vt: 'unknown', urlhaus: 'unknown' }));
+  // Raw digits: isMalicious only, never a model, log or the result. Not on the Email Guard path (out of scope).
+  const phones = email ? [] : phonesToCheck(input.text, input.sender);
 
   const jevCall = Promise.resolve().then(() => deps.jev(modelText, !!email)).catch(() => null);
-  const [intel, communityReports, ragMatches] = await Promise.all([
+  const [intel, communityReports, ragMatches, phoneResults] = await Promise.all([
     domains.length ? withTimeout(() => deps.intel(domains), unknownIntel) : [],
     registrable.length ? withTimeout(() => deps.reports(registrable), []) : [],
     withTimeout(() => deps.rag(modelText), []),
+    phones.length ? withTimeout(() => deps.phones(phones.map((p) => p.number)), []) : [],
   ]);
-  const floor = ruleFloor({ text, domains, intel, communityReports, ragMatches, email });
+  const phoneIntel = phones.map(({ label }, i): PhoneIntel => ({ label, result: phoneResults[i] ?? 'unknown' }));
+  const floor = ruleFloor({ text, domains, intel, phoneIntel, communityReports, ragMatches, email });
 
   const jev = await jevCall;
   const jevScore = jev ? scamScore(jev.signals, CAL.jev.weights) : null;
@@ -123,6 +130,8 @@ export async function runScanPipeline(
     `Rule checks: ${floor.flags.join(' ') || 'nothing found.'}`,
     `Links: ${domains.join(', ') || 'none'}`,
     ...intel.map((i) => `Threat intel for ${i.domain}: VirusTotal ${i.vt === 'unknown' ? 'unknown' : `${i.vt.malicious} malicious, ${i.vt.suspicious} suspicious`}; URLhaus ${i.urlhaus}`),
+    // Flagged numbers only: "no record" is not "safe", and with the lookup off (no key, the eval) the prompt stays as calibrated.
+    ...phoneIntel.flatMap(({ label, result }) => (typeof result === 'object' ? [describePhone(label, result)] : [])),
     ...communityReports.map((r) => `Community reports for ${r.domain}: ${r.reporters} distinct reporters`),
     // Strong matches only: weak ones (0.2–0.4) read as "similar known scam" and pushed genuine messages up (eval 2026-11-13).
     ...ragMatches.filter((m) => m.score >= RAG_MATCH_THRESHOLD).map((m) => `Similar known scam pattern: ${m.title} (similarity ${m.score})`),
@@ -133,7 +142,7 @@ export async function runScanPipeline(
   ].join('\n');
   const claude = clarify ? null : await Promise.resolve().then(() => deps.claude(modelText, evidence)).catch(() => null);
 
-  const level = maxLevel(floor.level, jevLvl, claudeLevel(claude?.verdict ?? null, CAL.claude));
+  const level = maxLevel(floor.level, jevLvl, claudeLevel(claude?.verdict ?? null, CAL.claude), Level[input.atLeast ?? 'SAFE']);
   const verdict = LEVEL_NAME[level];
   const useClaudeText = claude != null && VERDICTS.indexOf(claude.verdict) >= level;
   const incomplete = !jev || (!clarify && !claude);
@@ -143,7 +152,7 @@ export async function runScanPipeline(
     verdict,
     flags: [...new Set([...floor.flags, ...jevFlags, ...(claude?.redFlags ?? []), ...(incomplete ? [INCOMPLETE] : [])])],
     // SAFE always uses our wording: a model's "this is safe" must never reach the card (CLAUDE.md UX rules).
-    advice: useClaudeText && verdict !== 'SAFE' ? claude.advice : ADVICE[verdict],
+    advice: useClaudeText && verdict !== 'SAFE' && claude.advice ? claude.advice : ADVICE[verdict], // blank = parseClaude dropped it
     scamType: useClaudeText ? claude.scamType : '',
     ...(clarify && { clarify }),
     ...(email && { importance: isOneOf(IMPORTANCES, jev?.importance) ? jev.importance : DEFAULT_IMPORTANCE }),

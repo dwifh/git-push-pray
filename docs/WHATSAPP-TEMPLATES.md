@@ -1,6 +1,6 @@
 # WhatsApp Templates — submission spec
 
-Outbound only (D3). Submit both now in Meta Business Manager → WhatsApp Manager → Message templates → Create. **Submit `call_alert` first**: it drives the Coach "HANG UP" demo moment and is the clearest safety use case. Submit `scam_warning` straight after; approval runs in parallel with the build.
+Outbound only (D3). Three templates: `call_alert`, `scam_warning` and `help_request` (§3, Helping Hands). Submit the first two now in Meta Business Manager → WhatsApp Manager → Message templates → Create. **Submit `call_alert` first**: it drives the Coach "HANG UP" demo moment and is the clearest safety use case. Submit `scam_warning` straight after; approval runs in parallel with the build.
 
 Until both are approved, `WHATSAPP_TEMPLATE_MODE=test` routes every alert to Meta's `hello_world`, and `WHATSAPP_TEMPLATE_MODE=text` sends our exact wording as a plain message (it only arrives if the recipient messaged the number in the last 24 h). The wording lives in `src/shared/messages.ts`; change it there and here together.
 
@@ -84,6 +84,39 @@ You are receiving this because they chose you as their trusted contact in Scam S
 `MCB` → `MCB`, `SBM` → `SBM Bank`, `MAURITIUS_POST` → `Mauritius Post`, `CEB` → `CEB`, `CWA` → `CWA`, `MRA` → `MRA`, `EMTEL` → `Emtel`, `MYT` → `Mauritius Telecom` (never `my.t`), `POLICE` → `the Police`, `OTHER` → `a well-known organisation`.
 
 `{{3}}` is `high risk` or `suspicious`. The button only appears for verdicts of `SUSPICIOUS` or above, so `SAFE` is never sent.
+
+---
+
+## 3. `help_request` (sent by "Ask my helper" on a scan result, Helping Hands, PLAN §7.3)
+
+Submit third. Production runs `WHATSAPP_TEMPLATE_MODE=text`, so it works before approval inside the 24 h window.
+
+| Field | Value |
+|---|---|
+| Name | `help_request` |
+| Category | `UTILITY` (the user asked for this help; it carries an access code, close to Meta's account-update examples) |
+| Language | English (`en`) |
+| Header | Text: `Help request` |
+| Footer | `Scam Shield Mauritius safety alert` |
+| Buttons | None |
+
+**Body** (paste exactly):
+```
+This is a help request from {{1}}. They would like you to check a message before they reply to it.
+
+Open Scam Shield on your phone, tap Helper and enter this code: {{2}}
+
+The code works for 30 minutes. Never share it with anyone else, and never click links in the message you are checking.
+
+You are receiving this because they chose you as their trusted contact in Scam Shield.
+```
+
+| Variable | Meaning | Sample value for Meta | Max length |
+|---|---|---|---|
+| `{{1}}` | User's first name | `Asha` | 30 |
+| `{{2}}` | 6-digit help code, made by the server | `482913` | 6 |
+
+Only `/api/help` sends this template, with a code it made itself; `/api/alert` refuses it (400). No link to the app, on purpose: the message must not teach the helper to tap links in WhatsApp.
 
 ---
 

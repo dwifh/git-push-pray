@@ -1,6 +1,7 @@
 // Outbound WhatsApp alert to the trusted contact (PLAN §7.1, D10). The number is never stored or logged.
 import { allowRequest, clientKey } from '@/lib/rate-limit';
 import { buildTemplatePayload, sendTemplate } from '@/lib/whatsapp';
+import { ALERT_TEMPLATES, isOneOf } from '@/shared/types';
 
 // Strict 3 per IP per minute (PLAN §7.1): each alert reaches a real phone.
 export async function POST(request: Request) {
@@ -8,7 +9,8 @@ export async function POST(request: Request) {
   let template: unknown, to: unknown, vars: unknown;
   try {
     ({ template, to, vars } = (await request.json()) ?? {});
-    if (typeof template !== 'string' || typeof to !== 'string' || !Array.isArray(vars) || !vars.every((v) => typeof v === 'string')) {
+    // help_request carries a server-made code, so only /api/help may send it.
+    if (!isOneOf(ALERT_TEMPLATES, template) || typeof to !== 'string' || !Array.isArray(vars) || !vars.every((v) => typeof v === 'string')) {
       throw new Error('Invalid request');
     }
     buildTemplatePayload(template, to, vars, 'live'); // validates allowlisted template, E.164 digits and every variable
