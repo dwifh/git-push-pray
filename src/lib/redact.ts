@@ -17,7 +17,13 @@ const LOCAL_PHONE_RE = /(?<!\d)(?:\d{9,12}|\d{3,4}[\s-]\d{4})(?!\d)/g;
 const CODE_RE = /(?<!\d)\d{4,8}(?!\d)/g;
 const NUMBER_RE = /(?<!\d)(?:\d[\s.-]?){6,}\d(?!\d)/g; // runs after CODE: catches leftover grouped digits ("57 12 34 56")
 
-export function redact(text: string) {
+export type FoundPhone = { number: string; label: string }; // number: digits with any leading +; label: its placeholder
+
+// phones: optional collector for phone-intel.ts, so only what is redacted as a phone (never a card or NIC) can be looked up.
+export function redact(text: string, phones?: FoundPhone[]) {
+  const phone = (m: string, label: string) => (phones?.push({ number: m.replace(/[^\d+]/g, ''), label }), label);
+  // The digit rules are ASCII \d: NFKC first turns fullwidth "４８２９１３" (and "ｍｃｂ．ｍｕ", as a browser would) into ASCII.
+  text = text.normalize('NFKC');
   const hosts: string[] = [];
   // Private-use sentinel with no digits, so later digit rules never touch a stashed host.
   const stash = (host: string) => `${String.fromCharCode(0xe100 + hosts.push(host) - 1)}`;
@@ -31,8 +37,8 @@ export function redact(text: string) {
     .replace(BARE_DOMAIN_RE, (_, host: string, path?: string) => stash(host) + (path ?? ''))
     .replace(NIC_RE, '[NIC]')
     .replace(CARD_RE, '[CARD]')
-    .replace(INTL_PHONE_RE, (_, cc: string) => `[PHONE +${cc}]`)
-    .replace(LOCAL_PHONE_RE, '[PHONE]')
+    .replace(INTL_PHONE_RE, (m, cc: string) => phone(m, `[PHONE +${cc}]`))
+    .replace(LOCAL_PHONE_RE, (m) => phone(m, '[PHONE]'))
     .replace(CODE_RE, '[CODE]')
     .replace(NUMBER_RE, '[NUMBER]')
     .replace(/(.)/g, (_, c: string) => hosts[c.charCodeAt(0) - 0xe100]);

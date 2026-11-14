@@ -13,6 +13,7 @@ const fakes = (over: Partial<Deps> = {}): Deps => ({
   jev: async () => quietJev,
   claude: async () => claudeSays('SAFE'),
   intel: async () => [],
+  phones: async (n) => n.map(() => 'unknown' as const),
   reports: async () => [],
   rag: async () => [],
   ...over,
@@ -68,6 +69,35 @@ const down = async () => {
   );
   for (const s of seen) for (const secret of ['482913', '5712', '5798']) assert.ok(!s.includes(secret), `leaked ${secret}`);
   assert.ok(seen[0].includes('[PHONE +230]'), 'the sender reaches the models, redacted');
+}
+
+// Phone intel (isMalicious): the raw digits go to the phone lookup only; models see the label and the result.
+// A flagged number lifts a clean message to SUSPICIOUS, never further on its own; an outage keeps the rule verdict.
+{
+  let asked: string[] = [];
+  const seen: string[] = [];
+  const r = await runScanPipeline(
+    { text: 'Hi, please call me back on 5712 3456', sender: '+230 5798 1234' },
+    fakes({
+      phones: async (n) => ((asked = n), n.map((_, i) => (i === 0 ? { level: 'high', score: 80, blacklisted: true } : 'unknown'))),
+      jev: async (t) => (seen.push(t), quietJev),
+      claude: async (t, e) => (seen.push(t, e), claudeSays('SAFE')),
+    }),
+  );
+  assert.deepEqual(asked, ['+23057981234', '57123456'], 'sender first');
+  assert.equal(r.verdict, 'SUSPICIOUS');
+  assert.ok(r.flags.includes('A phone number linked to this message has a record of fraud or spam.'));
+  assert.ok(seen[2].includes("Phone check for the sender's number: isMalicious risk high (80/100), on its blocklist"));
+  assert.ok(!seen[2].includes('Phone check for [PHONE]'), "an unanswered lookup adds no evidence line (Claude's prompt stays as calibrated)");
+  for (const s of [...seen, JSON.stringify(r)]) for (const secret of ['5712', '5798', '3456']) assert.ok(!s.includes(secret), `leaked ${secret}`);
+
+  const hung = await runScanPipeline({ text: DEMO_1 }, fakes({ phones: () => new Promise(() => {}) }));
+  assert.equal(hung.verdict, 'HIGH_RISK', 'a hung phone lookup never blocks or lowers the verdict');
+  assert.equal((await runScanPipeline({ text: 'Call 5712 3456' }, fakes({ phones: down }))).verdict, 'SAFE');
+
+  let emailLookups = 0;
+  await scanEmail('From: "Shop" <a@shop.example>\r\nSubject: Hi\r\n\r\nCall 5712 3456', fakes({ phones: async (n) => ((emailLookups += n.length), []) }));
+  assert.equal(emailLookups, 0, 'Email Guard never sends numbers to isMalicious');
 }
 
 // Claude sees only strong RAG matches: a weak one is not evidence of a scam.
@@ -167,6 +197,13 @@ assert.equal((await scanEmail(SPOOFED_MRA, fakes({ jev: down, claude: async () =
   const r = await runScanPipeline({ text: DEMO_3 }, fakes({ jev: async (_t, email) => ((asked = email), quietJev) }));
   assert.equal(asked, false);
   assert.equal('importance' in r, false);
+}
+
+// Security review 2026-11-14: a blank Claude advice (parseClaude dropped an injected number or link) uses our wording.
+{
+  const r = await runScanPipeline({ text: DEMO_3 }, fakes({ claude: async () => ({ ...claudeSays('SUSPICIOUS'), advice: '' }) }));
+  assert.equal(r.verdict, 'SUSPICIOUS');
+  assert.match(r.advice, /^Be careful\./);
 }
 
 console.log('scan-pipeline ok');

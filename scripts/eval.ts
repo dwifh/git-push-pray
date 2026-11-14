@@ -56,6 +56,8 @@ async function record(limit: number) {
           ...LIVE_DEPS,
           // No threat intel: 440 messages would burn VirusTotal's 500/day free quota before the demo.
           intel: async () => [],
+          // No isMalicious either: its quota is small. 'unknown' adds no evidence line, so Claude's prompt stays as calibrated.
+          phones: async (n) => n.map(() => 'unknown' as const),
           jev: async (t) => (raw.jev = await LIVE_DEPS.jev(t)),
           claude: async (t, e) => (raw.claude = await LIVE_DEPS.claude(t, e)),
         },
